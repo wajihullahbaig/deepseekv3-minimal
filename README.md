@@ -13,6 +13,10 @@ are not required. Therefore, to make things simple, this repo exists.
 * Basic text generation
 * Minimal code make everything work 
 
+## Architecture of DeepSeek V3
+![Arch](deepseek_arch.png)
+
+
 ## Training on 20220301.simple wikipedia
 
 ![Losses](loss_plot.png)
