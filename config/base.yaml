@@ -1,0 +1,4 @@
+# Base configuration
+seed: 42
+device: cuda
+mixed_precision: True
