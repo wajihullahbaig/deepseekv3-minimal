@@ -8,6 +8,16 @@ from torch.nn import functional as F
 
 from seeding import set_seed
 from trainable_params import print_trainable_parameters
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from models.deepseek_v3 import DeepSeekV3
+from typing import Dict, List, Optional, Union
+import yaml
+from transformers import GPT2TokenizerFast
+from torch.nn import functional as F
+
+from seeding import set_seed
+from trainable_params import print_trainable_parameters
 
 class GenerationConfig:
     def __init__(self, max_length=128, temperature=1.0, top_k=None, top_p=None,
@@ -50,7 +60,7 @@ class TextGenerator:
                 causal_mask = self._create_causal_mask(generated.size(0), current_length)
                 
                 # Model forward pass with MTP
-                outputs = self.model(generated, attention_mask=causal_mask, target_ids=None)
+                outputs = self.model(generated, attention_mask=causal_mask)
                 
                 # Use the main model output for next token prediction
                 logits = outputs[:, -1, :]
@@ -61,6 +71,12 @@ class TextGenerator:
                 # Apply repetition penalty
                 unique_tokens = torch.unique(generated)
                 logits[:, unique_tokens] /= config.repetition_penalty
+                
+                # Apply top_k filtering if specified
+                if config.top_k is not None:
+                    top_k_values, _ = torch.topk(logits, k=config.top_k)
+                    min_top_k_value = top_k_values[:, -1].unsqueeze(-1)
+                    logits[logits < min_top_k_value] = -float('Inf')
                 
                 # Sample next token
                 probs = F.softmax(logits, dim=-1)
@@ -83,6 +99,9 @@ class TextGenerator:
             generated_texts.append(text)
         
         return generated_texts if len(generated_texts) > 1 else generated_texts[0]
+
+# The rest of the code remains unchanged.
+
 
 def load_model_and_tokenizer(model_path: str, model_config: dict) -> tuple:
     """Load model and tokenizer with proper error handling."""
@@ -123,7 +142,7 @@ def main():
         
         # Initialize model and tokenizer
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_9.pt",
+            model_path="checkpoints/checkpoint_epoch_1.pt",
             model_config=model_config
         )
         print_trainable_parameters(model, unit="M")
@@ -134,23 +153,25 @@ def main():
         # Configure generation
         gen_config = GenerationConfig(
             max_length=128,
-            temperature=0.8,
+            temperature=1.2,
             top_p=0.95,
-            repetition_penalty=1.2,
+            top_k=2,
+            repetition_penalty=2.0,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.pad_token_id
         )
         
         # Generate text
         prompts = [
-            "World heritage sites in Germany are",
-            "In a galaxy far, far away",
-            "The future of artificial intelligence"
+            "World heritage sites in Germany are ",
+            "In a galaxy far, far away ",
+            "The future of artificial intelligence "
         ]
         
         for prompt in prompts:
             generated_text = generator.generate(prompt, gen_config)
             print(f"Generated text for prompt:\n{prompt}\n{generated_text}\n")
+            print("--------------------------------------------------")
             
     except Exception as e:
         print(f"Error in main execution: {e}")

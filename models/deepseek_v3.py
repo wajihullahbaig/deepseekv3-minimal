@@ -253,13 +253,6 @@ class DeepSeekV3(nn.Module):
         else:
             return main_output
     
-    def resize_token_embeddings(self, new_vocab_size: int):
-        """Resize the token embeddings to match the new vocabulary size."""
-        old_embeddings = self.embedding
-        new_embeddings = nn.Embedding(new_vocab_size, self.config['hidden_dim'])
-        new_embeddings.weight.data[:old_embeddings.num_embeddings] = old_embeddings.weight.data        
-        # Update the embedding layer
-        self.embedding = new_embeddings
-        self.config['vocab_size'] = new_vocab_size
+
 
         

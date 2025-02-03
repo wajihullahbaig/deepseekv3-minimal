@@ -19,15 +19,13 @@ def main():
     train_config = load_config('config/train.yaml')
     model_config = load_config('config/model.yaml')
 
-    model = DeepSeekV3(model_config)
     tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
     # Add special tokens to the tokenizer
     tokenizer.add_special_tokens({
         "pad_token": "<|pad|>"        
     })
-
-    # Update model embeddings (if using a model)
-    model.resize_token_embeddings(len(tokenizer))
+    model_config["vocab_size"] = len(tokenizer) # We added a special token. So Lets update
+    model = DeepSeekV3(model_config)    
     train_loader, val_loader, test_loader = create_datasets_and_loaders(tokenizer,batch_size=train_config['batch_size'],max_length=model_config['max_seq_len'],device=config['device'])
 
     print(f"Number of batches in train_loader: {len(train_loader)}")

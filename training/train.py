@@ -18,6 +18,7 @@ def train(model, train_loader, val_loader, config, pad_token_id=None):
 
         # Training
         total_batches = len(train_loader)
+        optimizer.zero_grad()                        
         for index,batch in enumerate(train_loader):
             input_ids, attention_mask, target_ids = batch
             input_ids = input_ids.to(config['device'])
@@ -31,7 +32,6 @@ def train(model, train_loader, val_loader, config, pad_token_id=None):
                 attention_mask = attention_mask.expand(-1, model.config['num_heads'], -1, -1)  # [batch_size, num_heads, 1, seq_len]
                 attention_mask = attention_mask.expand(-1, -1, attention_mask.size(-1), -1)  # [batch_size, num_heads, seq_len, seq_len]
             
-            optimizer.zero_grad()
             outputs, mtp_outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
             
             # Compute main loss
@@ -46,12 +46,13 @@ def train(model, train_loader, val_loader, config, pad_token_id=None):
                 mtp_loss += loss_k
             mtp_loss /= mtp_outputs.size(1)
                         
-            # Total loss
             total_loss = total_loss = main_loss + mtp_loss
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)           
+            optimizer.step()            
+            optimizer.zero_grad()
+            torch.cuda.empty_cache()            
+            
             epoch_train_loss += total_loss.item()
             if index % 100 == 0:                
                 print(f"Epoch: {epoch} Batch/Batches: {index}/{total_batches} Train Loss: {total_loss.item()}")
