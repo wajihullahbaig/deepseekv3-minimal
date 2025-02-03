@@ -63,7 +63,7 @@ def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None)
                 
                 # Configure generation
                 gen_config = GenerationConfig(
-                    max_length=50,
+                    max_length=128,
                     temperature=2.0,
                     top_p=0.95,
                     top_k=2,

@@ -1,23 +1,15 @@
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from models.deepseek_v3 import DeepSeekV3
 from typing import Dict, List, Optional, Union
 import yaml
 from transformers import GPT2TokenizerFast
-from torch.nn import functional as F
-
 from seeding import set_seed
 from trainable_params import print_trainable_parameters
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from models.deepseek_v3 import DeepSeekV3
 from typing import Dict, List, Optional, Union
 import yaml
-from transformers import GPT2TokenizerFast
 from torch.nn import functional as F
-
-from seeding import set_seed
-from trainable_params import print_trainable_parameters
 
 class GenerationConfig:
     def __init__(self, max_length=128, temperature=1.0, top_k=None, top_p=None,
@@ -143,7 +135,7 @@ def main():
         
         # Initialize model and tokenizer
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_1.pt",
+            model_path="checkpoints/checkpoint_epoch_4.pt",
             model_config=model_config
         )
         print_trainable_parameters(model, unit="M")
