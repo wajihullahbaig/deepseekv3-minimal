@@ -1,10 +1,11 @@
 import torch
 from torch.optim import AdamW
 from torch import nn
+from test_text_generation import GenerationConfig, TextGenerator
 from training.checkpointing import save_checkpoint
 from visualization.metrics import plot_metrics
 
-def train(model, train_loader, val_loader, config, pad_token_id=None):
+def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None):
     optimizer = AdamW(model.parameters(), lr=config['learning_rate'])
     criterion = nn.CrossEntropyLoss(ignore_index=pad_token_id)  # Ignore padding tokens in loss computation
 
@@ -56,6 +57,30 @@ def train(model, train_loader, val_loader, config, pad_token_id=None):
             epoch_train_loss += total_loss.item()
             if index % 100 == 0:                
                 print(f"Epoch: {epoch} Batch/Batches: {index}/{total_batches} Train Loss: {total_loss.item()}")
+
+            if index % 500 == 0:                
+                generator = TextGenerator(model, tokenizer)
+                
+                # Configure generation
+                gen_config = GenerationConfig(
+                    max_length=50,
+                    temperature=2.0,
+                    top_p=0.95,
+                    top_k=2,
+                    repetition_penalty=2.0,
+                    eos_token_id=tokenizer.eos_token_id,
+                    pad_token_id=tokenizer.pad_token_id
+                )
+                
+                # Generate text
+                prompts = [
+                    "The future of artificial intelligence "
+                ]                
+                for prompt in prompts:
+                    generated_text = generator.generate(prompt, gen_config)
+                    print(f"Generated text for prompt:\n{prompt}\n{generated_text}\n")
+                    print("--------------------------------------------------")
+                model.train()
 
         # Average training loss for the epoch
         avg_train_loss = epoch_train_loss / len(train_loader)

@@ -35,6 +35,7 @@ class TextGenerator:
         self.model = model.to(device)
         self.tokenizer = tokenizer
         self.device = device
+        self.model.eval()
         
     def _create_causal_mask(self, bsz: int, seq_len: int) -> torch.Tensor:
         """Create a causal mask to prevent attending to future tokens."""
@@ -153,7 +154,7 @@ def main():
         # Configure generation
         gen_config = GenerationConfig(
             max_length=128,
-            temperature=1.2,
+            temperature=2.0,
             top_p=0.95,
             top_k=2,
             repetition_penalty=2.0,
