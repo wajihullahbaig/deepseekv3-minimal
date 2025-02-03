@@ -8,6 +8,7 @@ are not required. Therefore, to make things simple, this repo exists.
 * Multi Token Prediction
 * Mixture of experts with controllable number of active experts
 * Transformers (obviously)
+* Key-Value-Query compression
 * Basic training loops
 * Basic text generation
 * Minimal code make everything work 
