@@ -1,11 +1,11 @@
 # Model configuration
 num_layers: 4
-hidden_dim: 64
+hidden_dim: 128
 num_heads: 4
-head_dim: 16
-kv_compression_dim: 32
-query_compression_dim: 32
-num_experts: 6
-activated_experts: 3
+head_dim: 64
+kv_compression_dim: 128
+query_compression_dim: 3128
+num_experts: 4
+activated_experts: 2
 vocab_size : 50258
-max_seq_len: 128 # Context length
+max_seq_len: 256 # Context length
