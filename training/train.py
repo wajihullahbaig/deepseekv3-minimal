@@ -61,18 +61,16 @@ def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None)
             if index % 500 == 0:                
                 generator = TextGenerator(model, tokenizer)
                 
-                # Configure generation
                 gen_config = GenerationConfig(
-                    max_length=128,
-                    temperature=2.0,
-                    top_p=0.95,
-                    top_k=2,
-                    repetition_penalty=2.0,
+                    max_length=50,
+                    temperature=1.0,
+                    top_k=50,
+                    top_p=0.9,
+                    repetition_penalty=1.2,
                     eos_token_id=tokenizer.eos_token_id,
                     pad_token_id=tokenizer.pad_token_id
                 )
                 
-                # Generate text
                 prompts = [
                     "The future of artificial intelligence "
                 ]                
@@ -87,8 +85,6 @@ def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None)
         print(f"Epoch {epoch+1}/{config['num_epochs']}, Train Loss: {avg_train_loss:.4f}")
         train_losses.append(avg_train_loss)
 
-        # Validation
-        model.eval()
         epoch_val_loss = 0.0
         with torch.no_grad():
             for batch in val_loader:
@@ -104,7 +100,7 @@ def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None)
                     attention_mask = attention_mask.expand(-1, model.config['num_heads'], -1, -1)  # [batch_size, num_heads, 1, seq_len]
                     attention_mask = attention_mask.expand(-1, -1, attention_mask.size(-1), -1)  # [batch_size, num_heads, seq_len, seq_len]
 
-                outputs, mtp_outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
+                outputs = model(input_ids, attention_mask=attention_mask)
                 
                 # Compute main loss
                 main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))
@@ -119,7 +115,7 @@ def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None)
                 mtp_loss /= mtp_outputs.size(1)
                 
                 # Total loss
-                total_loss = main_loss + mtp_loss
+                total_loss = main_loss
                 epoch_val_loss += total_loss.item()
 
         # Average validation loss for the epoch
