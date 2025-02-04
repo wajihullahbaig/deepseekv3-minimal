@@ -8,4 +8,5 @@ query_compression_dim: 128
 num_experts: 4
 activated_experts: 2
 vocab_size : 50258
+min_seq_len: 5
 max_seq_len: 256 # Context length

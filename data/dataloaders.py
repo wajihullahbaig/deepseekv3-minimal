@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader, Dataset, random_split
 from transformers import AutoTokenizer
 from datasets import load_dataset
-import os
+from tqdm import tqdm
 import re
 
 class TextDataset(Dataset):
@@ -76,11 +76,10 @@ def split_text_into_chunks(text, max_tokens, tokenizer):
     return chunks
 
 
-
-def preprocess_and_chunk_dataset(dataset, tokenizer, max_length, min_length=10):
+def preprocess_and_chunk_dataset(dataset, min_length, max_length, tokenizer):
     cleaned_chunks = []
     
-    for item in dataset:
+    for item in tqdm(dataset, desc="Processing items", unit="item"):
         text = item['text']
         
         # Clean the text
@@ -94,12 +93,13 @@ def preprocess_and_chunk_dataset(dataset, tokenizer, max_length, min_length=10):
     
     return cleaned_chunks
 
-def create_datasets_and_loaders(tokenizer, batch_size=32, max_length=4096, device='cpu'):
+
+def create_datasets_and_loaders(tokenizer, batch_size=32,min_length=5, max_length=4096, device='cpu'):
     # Download Wikipedia dataset
     dataset = load_dataset("wikipedia", "20220301.simple", split="train")
     
     # Preprocess and filter the dataset
-    cleaned_chunks = preprocess_and_chunk_dataset(dataset, tokenizer, max_length)
+    cleaned_chunks = preprocess_and_chunk_dataset(dataset, min_length=min_length, max_length = max_length,tokenizer=tokenizer)
     
     # Create a single dataset
     full_dataset = TextDataset(

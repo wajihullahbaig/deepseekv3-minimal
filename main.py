@@ -27,7 +27,13 @@ def main():
     model_config["vocab_size"] = len(tokenizer) # We added a special token. So Lets update
     model = DeepSeekV3(model_config)    
     print("Preparing data, please wait...")
-    train_loader, val_loader, test_loader = create_datasets_and_loaders(tokenizer,batch_size=train_config['batch_size'],max_length=model_config['max_seq_len'],device=config['device'])
+    train_loader, val_loader, test_loader = create_datasets_and_loaders(
+        tokenizer,
+        batch_size=train_config['batch_size'],
+        min_length = model_config["min_seq_len"],
+        max_length=model_config['max_seq_len'],
+        device=config['device']
+        )
 
     print(f"Number of batches in train_loader: {len(train_loader)}")
     print(f"Number of batches in val_loader: {len(val_loader)}")
