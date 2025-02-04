@@ -95,7 +95,7 @@ class MultiHeadLatentAttention(nn.Module):
         # Attention scores
         attn_scores = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
         
-        # Apply causal mask (no shape modification needed)
+
         if attention_mask is not None:
             attn_scores = attn_scores.masked_fill(attention_mask == 0, -1e9)
 

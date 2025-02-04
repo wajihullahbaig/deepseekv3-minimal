@@ -11,8 +11,11 @@ from typing import Dict, List, Optional, Union
 import yaml
 from torch.nn import functional as F
 
+import torch
+from torch.nn import functional as F
+
 class GenerationConfig:
-    def __init__(self, max_length=128, temperature=1.0, top_k=None, top_p=None,
+    def __init__(self, max_length=128, temperature=1.0, top_k=50, top_p=0.9,
                  repetition_penalty=1.2, eos_token_id=None, pad_token_id=None):
         self.max_length = max_length
         self.temperature = temperature
@@ -34,7 +37,7 @@ class TextGenerator:
         mask = torch.tril(torch.ones(seq_len, seq_len, device=self.device)).bool()
         mask = mask.unsqueeze(0).unsqueeze(0).expand(bsz, 1, seq_len, seq_len)
         return mask
-
+    
     def generate(self, prompts: Union[str, List[str]], config: GenerationConfig) -> Union[str, List[str]]:
         if isinstance(prompts, str):
             prompts = [prompts]
@@ -56,25 +59,39 @@ class TextGenerator:
                 outputs = self.model(generated, attention_mask=causal_mask)
                 
                 # Use the main model output for next token prediction
-                logits = outputs[:, -1, :]
-                
-                # Apply temperature scaling
-                logits = logits / config.temperature
+                logits = outputs[:, -1, :] / config.temperature
                 
                 # Apply repetition penalty
-                unique_tokens = torch.unique(generated)
-                logits[:, unique_tokens] /= config.repetition_penalty
-                
-                # Apply top_k filtering if specified
+                for i in range(logits.size(0)):
+                    for previous_token in generated[i].unique():
+                        logits[i, previous_token] /= config.repetition_penalty
+
+                # Top-k and top-p filtering
+                filtered_logits = F.softmax(logits, dim=-1)
                 if config.top_k is not None:
-                    top_k_values, _ = torch.topk(logits, k=config.top_k)
+                    top_k_values, _ = torch.topk(filtered_logits, k=config.top_k)
                     min_top_k_value = top_k_values[:, -1].unsqueeze(-1)
-                    logits[logits < min_top_k_value] = -float('Inf')
+                    filtered_logits = filtered_logits.scatter_(-1, (filtered_logits < min_top_k_value).type(torch.int64), 0.0)
                 
+                if config.top_p is not None:
+                    sorted_logits, sorted_indices = torch.sort(filtered_logits, descending=True, dim=-1)
+                    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                    sorted_indices_to_remove = cumulative_probs > config.top_p
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                    sorted_indices_to_remove[..., 0] = 0
+
+                    # Scatter sorted mask back to original indices
+                    indices_to_remove = sorted_indices_to_remove.scatter(
+                        dim=-1,
+                        index=sorted_indices,
+                        src=sorted_indices_to_remove
+                    )
+                    filtered_logits = filtered_logits.masked_fill(indices_to_remove, 0.0)
+
                 # Sample next token
-                probs = F.softmax(logits, dim=-1)
+                probs = filtered_logits / torch.sum(filtered_logits, dim=-1, keepdim=True)
                 next_token = torch.multinomial(probs, num_samples=1)
-                
+
                 # Check for EOS token
                 if next_token.item() == config.eos_token_id:
                     eos_reached = True
@@ -92,9 +109,6 @@ class TextGenerator:
             generated_texts.append(text)
         
         return generated_texts if len(generated_texts) > 1 else generated_texts[0]
-
-# The rest of the code remains unchanged.
-
 
 def load_model_and_tokenizer(model_path: str, model_config: dict) -> tuple:
     """Load model and tokenizer with proper error handling."""
@@ -128,33 +142,24 @@ def load_config(config_path: str) -> dict:
 
 def main():    
     try:
-        # Load configurations
         base_config = load_config('config/base.yaml')
         set_seed(base_config["seed"])    
-        model_config = load_config('config/model.yaml')
-        
-        # Initialize model and tokenizer
+        model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_4.pt",
+            model_path="checkpoints/checkpoint_epoch_1.pt",
             model_config=model_config
         )
-        print_trainable_parameters(model, unit="M")
-        
-        # Initialize generator
-        generator = TextGenerator(model, tokenizer)
-        
-        # Configure generation
+        generator = TextGenerator(model, tokenizer)        
         gen_config = GenerationConfig(
-            max_length=128,
-            temperature=2.0,
-            top_p=0.95,
-            top_k=2,
-            repetition_penalty=2.0,
+            max_length=50,
+            temperature=1.0,
+            top_k=50,
+            top_p=0.9,
+            repetition_penalty=1.2,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.pad_token_id
         )
         
-        # Generate text
         prompts = [
             "World heritage sites in Germany are ",
             "In a galaxy far, far away ",
