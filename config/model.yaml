@@ -4,7 +4,7 @@ hidden_dim: 128
 num_heads: 4
 head_dim: 64
 kv_compression_dim: 128
-query_compression_dim: 3128
+query_compression_dim: 128
 num_experts: 4
 activated_experts: 2
 vocab_size : 50258
