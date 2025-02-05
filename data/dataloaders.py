@@ -88,7 +88,7 @@ def preprocess_and_chunk_dataset(dataset, min_length, max_length, tokenizer):
 
 def create_datasets_and_loaders(tokenizer, batch_size=32,min_length=5, max_length=4096, device='cpu'):
     # Download Wikipedia dataset
-    dataset = load_dataset("wikipedia", "20220301.simple", split="train")
+    dataset = load_dataset("wikipedia", "20220301.simple", split="train[:500]")
     
     # Preprocess and filter the dataset
     cleaned_chunks = preprocess_and_chunk_dataset(dataset, min_length=min_length, max_length = max_length,tokenizer=tokenizer)

@@ -4,9 +4,15 @@ from torch import nn
 from test_text_generation import GenerationConfig, TextGenerator
 from training.checkpointing import save_checkpoint
 from visualization.metrics import plot_metrics
+from torch.optim.lr_scheduler import CosineAnnealingLR
+
+
 
 def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None):
     optimizer = AdamW(model.parameters(), lr=config['learning_rate'])
+    scheduler = CosineAnnealingLR(optimizer, 
+                                T_max=config['num_epochs']*len(train_loader),
+                                eta_min=config['learning_rate']/10)
     criterion = nn.CrossEntropyLoss(ignore_index=pad_token_id)  # Ignore padding tokens in loss computation
 
     # Initialize lists to track losses
@@ -50,7 +56,8 @@ def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None)
             total_loss = total_loss = main_loss + mtp_loss
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)           
-            optimizer.step()            
+            optimizer.step()           
+            scheduler.step() 
             optimizer.zero_grad()
             torch.cuda.empty_cache()            
             
@@ -100,8 +107,8 @@ def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None)
                     attention_mask = attention_mask.expand(-1, model.config['num_heads'], -1, -1)  # [batch_size, num_heads, 1, seq_len]
                     attention_mask = attention_mask.expand(-1, -1, attention_mask.size(-1), -1)  # [batch_size, num_heads, seq_len, seq_len]
 
-                outputs = model(input_ids, attention_mask=attention_mask)
-                
+                outputs, mtp_outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
+            
                 # Compute main loss
                 main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))
                 
@@ -115,7 +122,7 @@ def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None)
                 mtp_loss /= mtp_outputs.size(1)
                 
                 # Total loss
-                total_loss = main_loss
+                total_loss = main_loss + mtp_loss
                 epoch_val_loss += total_loss.item()
 
         # Average validation loss for the epoch
