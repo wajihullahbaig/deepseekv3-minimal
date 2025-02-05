@@ -41,37 +41,28 @@ class TextDataset(Dataset):
 def clean_wikipedia_text(text):
     # Remove markup (simplified example)
     text = re.sub(r'\[.*?\]', '', text)  # Remove citations like [1], [2], etc.
+    text = re.sub(r'\[\[.*?\]\]', '', text)  # Remove wiki links like [[link]]
     text = re.sub(r'\{\{.*?\}\}', '', text)  # Remove templates like {{cite}}
     text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
     return text.strip()
 
-def split_text_into_chunks(text, max_tokens, tokenizer):
-    # First, split the text into sentences or paragraphs
-    sentences = text.split('.')
-    
+def split_text_into_chunks(sentences,max_length):
     chunks = []
-    current_chunk = ""
-    current_token_count = 0
+    current_chunk = []
+    current_length = 0
 
     for sentence in sentences:
-        # Add the period back (except for the last sentence if it didn't end with a period)
-        sentence = sentence.strip() + ('.' if sentence else '')
-        
-        sentence_tokens = tokenizer.encode(sentence, add_special_tokens=True)
-        sentence_token_count = len(sentence_tokens)
-    
-        # If adding this sentence would exceed the limit, start a new chunk
-        if current_token_count + sentence_token_count > max_tokens:
-            chunks.append(current_chunk.strip())
-            current_chunk = sentence
-            current_token_count = sentence_token_count
-        else:
-            current_chunk += ' ' + sentence
-            current_token_count += sentence_token_count
+        sentence_length = len(sentence.split())
+        if current_length + sentence_length > max_length:
+            if current_chunk:
+                chunks.append(' '.join(current_chunk))
+                current_chunk = []
+                current_length = 0
+        current_chunk.append(sentence)
+        current_length += sentence_length
 
-    # Add the last chunk if it's not empty
     if current_chunk:
-        chunks.append(current_chunk.strip())
+        chunks.append(' '.join(current_chunk))
 
     return chunks
 
@@ -87,9 +78,10 @@ def preprocess_and_chunk_dataset(dataset, min_length, max_length, tokenizer):
         
         # Filter low-quality text
         if len(cleaned_text) >= min_length:
-            # Split the text into chunks
-            chunks = split_text_into_chunks(cleaned_text, max_length, tokenizer)
+            sentences = cleaned_text.split('.')
+            chunks = split_text_into_chunks(sentences, max_length)
             cleaned_chunks.extend(chunks)
+
     
     return cleaned_chunks
 
@@ -120,7 +112,7 @@ def create_datasets_and_loaders(tokenizer, batch_size=32,min_length=5, max_lengt
     train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size])
     
     # Create DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     
