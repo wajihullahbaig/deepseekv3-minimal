@@ -53,10 +53,10 @@ class TextGenerator:
             
             while current_length < config.max_length and not eos_reached:
                 # Create causal mask for current sequence
-                causal_mask = self._create_causal_mask(generated.size(0), current_length)
+                casual_mask = self._create_causal_mask(generated.size(0), current_length)
                 
                 # Model forward pass with MTP
-                outputs = self.model(generated, attention_mask=causal_mask)
+                outputs = self.model(generated, attention_mask=casual_mask)
                 
                 # Use the main model output for next token prediction
                 logits = outputs[:, -1, :] / config.temperature
@@ -67,29 +67,13 @@ class TextGenerator:
                         logits[i, previous_token] /= config.repetition_penalty
 
                 # Top-k and top-p filtering
-                filtered_logits = F.softmax(logits, dim=-1)
-                if config.top_k is not None:
-                    top_k_values, _ = torch.topk(filtered_logits, k=config.top_k)
-                    min_top_k_value = top_k_values[:, -1].unsqueeze(-1)
-                    filtered_logits = filtered_logits.scatter_(-1, (filtered_logits < min_top_k_value).type(torch.int64), 0.0)
-                
-                if config.top_p is not None:
-                    sorted_logits, sorted_indices = torch.sort(filtered_logits, descending=True, dim=-1)
-                    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-                    sorted_indices_to_remove = cumulative_probs > config.top_p
-                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                    sorted_indices_to_remove[..., 0] = 0
-
-                    # Scatter sorted mask back to original indices
-                    indices_to_remove = sorted_indices_to_remove.scatter(
-                        dim=-1,
-                        index=sorted_indices,
-                        src=sorted_indices_to_remove
-                    )
-                    filtered_logits = filtered_logits.masked_fill(indices_to_remove, 0.0)
+                if config.top_k != 0:
+                    logits = self._top_k(logits, config.top_k)
+                if config.top_p != 1.0:
+                    logits = self._top_p(logits, config.top_p)
 
                 # Sample next token
-                probs = filtered_logits / torch.sum(filtered_logits, dim=-1, keepdim=True)
+                probs = F.softmax(logits, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1)
 
                 # Check for EOS token
@@ -109,6 +93,23 @@ class TextGenerator:
             generated_texts.append(text)
         
         return generated_texts if len(generated_texts) > 1 else generated_texts[0]
+    
+    def _top_k(self, logits, top_k):
+        """Filter logits to the top k values."""
+        min_logits = torch.topk(logits, top_k)[0][:, -1, None]
+        logits[logits < min_logits] = -float('inf')
+        return logits
+    
+    def _top_p(self, logits, top_p):
+        """Filter logits to retain only the top-p cumulative probability."""
+        sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+        cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+        sorted_indices_to_remove = cumulative_probs > top_p
+        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+        sorted_indices_to_remove[..., 0] = False
+        indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+        logits[indices_to_remove] = -float('inf')
+        return logits
 
 def load_model_and_tokenizer(model_path: str, model_config: dict) -> tuple:
     """Load model and tokenizer with proper error handling."""
@@ -146,7 +147,7 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_0.pt",
+            model_path="checkpoints/checkpoint_epoch_19.pt",
             model_config=model_config
         )
         generator = TextGenerator(model, tokenizer)        
@@ -161,7 +162,7 @@ def main():
         )
         
         prompts = [
-            "World heritage sites in Germany are ",
+            "UNESCO World Heritage Sites in Austria ",
             "In a galaxy far, far away ",
             "The future of artificial intelligence "
         ]

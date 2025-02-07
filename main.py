@@ -41,7 +41,7 @@ def main():
     print_trainable_parameters(model, unit="M")
     model.to(config['device'])
     
-    train(model, train_loader, val_loader, {**config, **train_config},tokenizer,tokenizer.pad_token_id)
+    train(model, train_loader, val_loader, {**config, **train_config})
 
 if __name__ == "__main__":
     main()

@@ -8,14 +8,12 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 
 
-def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None):
+def train(model, train_loader, val_loader, config):
+    model.to(config['device'])
     optimizer = AdamW(model.parameters(), lr=config['learning_rate'])
-    scheduler = CosineAnnealingLR(optimizer, 
-                                T_max=config['num_epochs']*len(train_loader),
-                                eta_min=config['learning_rate']/10)
-    criterion = nn.CrossEntropyLoss(ignore_index=pad_token_id)  # Ignore padding tokens in loss computation
+    scheduler = CosineAnnealingLR(optimizer, T_max=config['num_epochs'] * len(train_loader), eta_min=config['learning_rate'] / 10)
+    criterion = nn.CrossEntropyLoss(ignore_index=config.get('pad_token_id', -100))
 
-    # Initialize lists to track losses
     train_losses = []
     val_losses = []
 
@@ -23,115 +21,86 @@ def train(model, train_loader, val_loader, config, tokenizer, pad_token_id=None)
         model.train()
         epoch_train_loss = 0.0
 
-        # Training
-        total_batches = len(train_loader)
-        optimizer.zero_grad()                        
-        for index,batch in enumerate(train_loader):
+        for batch_idx, batch in enumerate(train_loader):
+            optimizer.zero_grad()  # Clear gradients at the start of each batch
+
             input_ids, attention_mask, target_ids = batch
             input_ids = input_ids.to(config['device'])
-            attention_mask = attention_mask.to(config['device'])
+            attention_mask = attention_mask.to(config['device']) if attention_mask is not None else None
             target_ids = target_ids.to(config['device'])
-            
-            # Reshape attention mask to match model's expected shape
-            if attention_mask.dim() == 2:  # [batch_size, seq_len]
-                # Expand to [batch_size, num_heads, seq_len, seq_len]
-                attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)  # [batch_size, 1, 1, seq_len]
-                attention_mask = attention_mask.expand(-1, model.config['num_heads'], -1, -1)  # [batch_size, num_heads, 1, seq_len]
-                attention_mask = attention_mask.expand(-1, -1, attention_mask.size(-1), -1)  # [batch_size, num_heads, seq_len, seq_len]
-            
+
+            # Adjust attention mask for multi-head attention
+            if attention_mask.dim() == 2:
+                attention_mask = attention_mask[:, None, :, None].expand(-1, model.config['num_heads'], -1, -1)
+
             outputs, mtp_outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
-            
+
             # Compute main loss
             main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))
-            
-            # Compute MTP loss
+
+            # Get seq_len from mtp_outputs
+            depth, seq_len, hidden_dim = mtp_outputs.size(1), mtp_outputs.size(2), mtp_outputs.size(3)
+
+            # Use seq_len to compute MTP loss
             mtp_loss = 0.0
-            for k in range(mtp_outputs.size(1)):
-                mtp_output_k = mtp_outputs[:, k, 0, :]  # Shape: [batch_size, vocab_size]
-                target_k = target_ids[:, k]  # Shape: [batch_size]
-                loss_k = criterion(mtp_output_k, target_k)
-                mtp_loss += loss_k
-            mtp_loss /= mtp_outputs.size(1)
-                        
-            total_loss = total_loss = main_loss + mtp_loss
+            for k in range(depth):
+                mtp_output_k = mtp_outputs[:, k, :, :]  # [batch_size, seq_len, hidden_dim]
+                mtp_logits = model.output_head(mtp_output_k)  # [batch_size, seq_len, vocab_size]
+                target_k = target_ids[:, k * seq_len : (k + 1) * seq_len]  # Slice targets for depth k
+                mtp_loss += criterion(mtp_logits.view(-1, mtp_logits.size(-1)), target_k.view(-1))
+            mtp_loss /= depth
+
+            total_loss = main_loss + mtp_loss
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)           
-            optimizer.step()           
-            scheduler.step() 
-            optimizer.zero_grad()
-            torch.cuda.empty_cache()            
-            
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+            scheduler.step()
+
             epoch_train_loss += total_loss.item()
-            if index % 100 == 0:                
-                print(f"Epoch: {epoch} Batch/Batches: {index}/{total_batches} Train Loss: {total_loss.item()}")
 
-            if index % 500 == 0:                
-                generator = TextGenerator(model, tokenizer)
-                
-                gen_config = GenerationConfig(
-                    max_length=50,
-                    temperature=1.0,
-                    top_k=50,
-                    top_p=0.9,
-                    repetition_penalty=1.2,
-                    eos_token_id=tokenizer.eos_token_id,
-                    pad_token_id=tokenizer.pad_token_id
-                )
-                
-                prompts = [
-                    "The future of artificial intelligence "
-                ]                
-                for prompt in prompts:
-                    generated_text = generator.generate(prompt, gen_config)
-                    print(f"Generated text for prompt:\n{prompt}\n{generated_text}\n")
-                    print("--------------------------------------------------")
-                model.train()
+            if batch_idx % 100 == 0:
+                print(f"Epoch {epoch+1}, Batch {batch_idx}/{len(train_loader)}, Loss: {total_loss.item():.4f}")
 
-        # Average training loss for the epoch
         avg_train_loss = epoch_train_loss / len(train_loader)
-        print(f"Epoch {epoch+1}/{config['num_epochs']}, Train Loss: {avg_train_loss:.4f}")
         train_losses.append(avg_train_loss)
 
+        # Validation
+        model.eval()
         epoch_val_loss = 0.0
         with torch.no_grad():
             for batch in val_loader:
                 input_ids, attention_mask, target_ids = batch
                 input_ids = input_ids.to(config['device'])
-                attention_mask = attention_mask.to(config['device'])
+                attention_mask = attention_mask.to(config['device']) if attention_mask is not None else None
                 target_ids = target_ids.to(config['device'])
-                
-                # Reshape attention mask to match model's expected shape
-                if attention_mask.dim() == 2:  # [batch_size, seq_len]
-                    # Expand to [batch_size, num_heads, seq_len, seq_len]
-                    attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)  # [batch_size, 1, 1, seq_len]
-                    attention_mask = attention_mask.expand(-1, model.config['num_heads'], -1, -1)  # [batch_size, num_heads, 1, seq_len]
-                    attention_mask = attention_mask.expand(-1, -1, attention_mask.size(-1), -1)  # [batch_size, num_heads, seq_len, seq_len]
+
+                if attention_mask.dim() == 2:
+                    attention_mask = attention_mask[:, None, :, None].expand(-1, model.config['num_heads'], -1, -1)
 
                 outputs, mtp_outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
-            
-                # Compute main loss
+
                 main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))
-                
-                # Compute MTP loss
+                 # Get seq_len from mtp_outputs
+                depth, seq_len, hidden_dim = mtp_outputs.size(1), mtp_outputs.size(2), mtp_outputs.size(3)
+
+                # Use seq_len to compute MTP loss
                 mtp_loss = 0.0
-                for k in range(mtp_outputs.size(1)):
-                    mtp_output_k = mtp_outputs[:, k, 0, :]  # Shape: [batch_size, vocab_size]
-                    target_k = target_ids[:, k]  # Shape: [batch_size]
-                    loss_k = criterion(mtp_output_k, target_k)
-                    mtp_loss += loss_k
-                mtp_loss /= mtp_outputs.size(1)
-                
-                # Total loss
+                for k in range(depth):
+                    mtp_output_k = mtp_outputs[:, k, :, :]  # [batch_size, seq_len, hidden_dim]
+                    mtp_logits = model.output_head(mtp_output_k)  # [batch_size, seq_len, vocab_size]
+                    target_k = target_ids[:, k * seq_len : (k + 1) * seq_len]  # Slice targets for depth k
+                    mtp_loss += criterion(mtp_logits.view(-1, mtp_logits.size(-1)), target_k.view(-1))
+                mtp_loss /= depth
+
                 total_loss = main_loss + mtp_loss
                 epoch_val_loss += total_loss.item()
 
-        # Average validation loss for the epoch
         avg_val_loss = epoch_val_loss / len(val_loader)
         val_losses.append(avg_val_loss)
 
-        print(f"Epoch {epoch+1}/{config['num_epochs']}, "
-              f"Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
+        print(f"Epoch {epoch+1}/{config['num_epochs']}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
 
-        save_checkpoint(model, optimizer, epoch, config)        
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch, config)
 
     plot_metrics(train_losses, val_losses)
