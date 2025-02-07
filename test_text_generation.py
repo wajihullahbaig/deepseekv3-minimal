@@ -147,30 +147,38 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_19.pt",
+            model_path="checkpoints/checkpoint_epoch_16.pt",
             model_config=model_config
         )
-        generator = TextGenerator(model, tokenizer)        
-        gen_config = GenerationConfig(
-            max_length=50,
-            temperature=1.0,
-            top_k=50,
-            top_p=0.9,
-            repetition_penalty=1.2,
-            eos_token_id=tokenizer.eos_token_id,
-            pad_token_id=tokenizer.pad_token_id
-        )
-        
         prompts = [
-            "UNESCO World Heritage Sites in Austria ",
-            "In a galaxy far, far away ",
-            "The future of artificial intelligence "
-        ]
-        
-        for prompt in prompts:
-            generated_text = generator.generate(prompt, gen_config)
-            print(f"Generated text for prompt:\n{prompt}\n{generated_text}\n")
-            print("--------------------------------------------------")
+                            "UNESCO World Heritage Sites in Austria",
+                            "In a galaxy far far away",
+                            "The future of artificial intelligence",
+                            "The movie is about five sisters from an English family"
+                ]
+        generator = TextGenerator(model, tokenizer)   
+        temps = [0.5,1.0,2.0]     
+        topks = [10,25]
+        topps = [0.75,95]
+        penalties = [1.0, 1.2]
+        for temp in temps:
+            for topk in topks:
+                for topp in topps:
+                    for penalty in penalties:
+                        gen_config = GenerationConfig(
+                            max_length=50,
+                            temperature=temp,
+                            top_k=topk,
+                            top_p=topp,
+                            repetition_penalty=penalty,
+                            eos_token_id=tokenizer.eos_token_id,
+                            pad_token_id=tokenizer.pad_token_id
+                        )                       
+                        for prompt in prompts:
+                            generated_text = generator.generate(prompt, gen_config)
+                            print(f"temperature:{temp} - topk {topk} - topp {topp} - penalty {penalty}\n")
+                            print(f"Generated text for prompt:\n{prompt}\n{generated_text}\n")
+                            print("--------------------------------------------------")                   
             
     except Exception as e:
         print(f"Error in main execution: {e}")
