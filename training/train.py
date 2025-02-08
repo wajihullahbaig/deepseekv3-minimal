@@ -12,7 +12,7 @@ def train(model, train_loader, val_loader, config):
     model.to(config['device'])
     optimizer = AdamW(model.parameters(), lr=config['learning_rate'])
     scheduler = CosineAnnealingLR(optimizer, T_max=config['num_epochs'] * len(train_loader), eta_min=config['learning_rate'] / 10)
-    criterion = nn.CrossEntropyLoss(ignore_index=config.get('pad_token_id', -100))
+    criterion = nn.CrossEntropyLoss(ignore_index=config.get('pad_token_id'))
 
     train_losses = []
     val_losses = []

@@ -34,7 +34,7 @@ def main():
         max_length=model_config['max_seq_len'],
         device=config['device']
         )
-
+    config["pad_token_id"] = tokenizer.pad_token_id
     print(f"Number of batches in train_loader: {len(train_loader)}")
     print(f"Number of batches in val_loader: {len(val_loader)}")
     print(f"Number of batches in test_loader: {len(test_loader)}")
