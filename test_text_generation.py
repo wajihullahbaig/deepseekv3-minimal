@@ -147,7 +147,7 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_16.pt",
+            model_path="checkpoints/checkpoint_epoch_19.pt",
             model_config=model_config
         )
         prompts = [
