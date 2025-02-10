@@ -1,18 +1,12 @@
 import torch
 from models.deepseek_v3 import DeepSeekV3
-from typing import Dict, List, Optional, Union
 import yaml
 from transformers import GPT2TokenizerFast
 from seeding import set_seed
-from trainable_params import print_trainable_parameters
-import torch
 from models.deepseek_v3 import DeepSeekV3
-from typing import Dict, List, Optional, Union
-import yaml
+from typing import List, Union
 from torch.nn import functional as F
 
-import torch
-from torch.nn import functional as F
 
 class GenerationConfig:
     def __init__(self, max_length=128, temperature=1.0, top_k=50, top_p=0.9,
@@ -147,14 +141,11 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_11.pt",
+            model_path="checkpoints/checkpoint_epoch_29.pt",
             model_config=model_config
         )
         prompts = [
-                            "UNESCO World Heritage Sites in Austria",
-                            "In a galaxy far far away",
-                            "The future of artificial intelligence",
-                            "The movie is about five sisters from an English family"
+                            "The book explain including:"
                 ]
         generator = TextGenerator(model, tokenizer)   
         temps = [1.0,2.0]     
