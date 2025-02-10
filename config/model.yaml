@@ -1,7 +1,7 @@
 # Model configuration
 num_layers: 4
-hidden_dim: 32
-num_heads: 4
+hidden_dim: 64
+num_heads: 8
 head_dim: 64
 rope_dim: 64
 kv_compression_dim: 32

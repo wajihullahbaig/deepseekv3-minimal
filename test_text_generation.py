@@ -147,7 +147,7 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_19.pt",
+            model_path="checkpoints/checkpoint_epoch_11.pt",
             model_config=model_config
         )
         prompts = [
@@ -157,9 +157,9 @@ def main():
                             "The movie is about five sisters from an English family"
                 ]
         generator = TextGenerator(model, tokenizer)   
-        temps = [0.5,1.0,2.0]     
-        topks = [10,25]
-        topps = [0.75,95]
+        temps = [1.0,2.0]     
+        topks = [25,50]
+        topps = [0.90,95]
         penalties = [1.0, 1.2]
         for temp in temps:
             for topk in topks:
