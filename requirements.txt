@@ -1,0 +1,8 @@
+datasets==3.2.0
+matplotlib==3.10.0
+numpy==2.2.2
+PyYAML==6.0.2
+PyYAML==6.0.2
+torch==2.5.1
+tqdm==4.67.1
+transformers==4.47.1
