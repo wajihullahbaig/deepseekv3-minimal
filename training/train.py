@@ -70,7 +70,7 @@ def train(model, train_loader, val_loader, config):
             if batch_idx % 100 == 0:
                 print(f"Epoch {epoch+1}, Batch {batch_idx}/{len(train_loader)}, Loss: {total_loss.item():.4f}")       
 
-            if batch_idx % 500 == 0:
+            if batch_idx % 1000 == 0:
                 # Validation
                 model.eval()
                 epoch_val_loss = 0.0

@@ -110,9 +110,7 @@ def load_model_and_tokenizer(model_path: str, model_config: dict) -> tuple:
     try:
         tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
         tokenizer.add_special_tokens({
-            "eos_token": "<|endoftext|>",
-            "pad_token": "<|pad|>",
-            "unk_token": "<|unk|>"
+            "pad_token": "<|pad|>"
         })
         
         model = DeepSeekV3(model_config)  
@@ -141,14 +139,17 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_29.pt",
+            model_path="checkpoints/checkpoint_epoch_28.pt",
             model_config=model_config
         )
+        # Define prompts
         prompts = [
-                            "The book explain including:"
-                ]
+            "The space vehicle from USA was able",
+            "Artificial intelligence is transforming",
+            "Once upon a time, in a land far away"
+        ]
         generator = TextGenerator(model, tokenizer)   
-        temps = [1.0,2.0]     
+        temps = [0.75,1.0,2.0,5.0]     
         topks = [25,50]
         topps = [0.90,95]
         penalties = [1.0, 1.2]
