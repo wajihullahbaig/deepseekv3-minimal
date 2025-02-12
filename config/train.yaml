@@ -1,5 +1,5 @@
 # Training configuration
-batch_size: 64
+batch_size: 32
 learning_rate: 0.00075
 num_epochs: 40
 gradient_clip: 1.0

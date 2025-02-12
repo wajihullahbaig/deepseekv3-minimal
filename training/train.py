@@ -1,10 +1,8 @@
 import torch
 from torch.optim import AdamW
 from torch import nn
-from test_text_generation import GenerationConfig, TextGenerator
 from training.checkpointing import save_checkpoint
 from visualization.metrics import plot_metrics
-from torch.optim.lr_scheduler import CosineAnnealingLR
 from transformers import get_linear_schedule_with_warmup
 
 def train(model, train_loader, val_loader, config):
@@ -67,10 +65,10 @@ def train(model, train_loader, val_loader, config):
 
             epoch_train_loss += total_loss.item()
 
-            if batch_idx % 100 == 0:
-                print(f"Epoch {epoch+1}, Batch {batch_idx}/{len(train_loader)}, Loss: {total_loss.item():.4f}")       
+            if batch_idx % 10 == 0:
+                print(f"Epoch {epoch+1}, Batch {batch_idx}/{len(train_loader)}, Train Loss: {total_loss.item():.4f}")       
 
-            if batch_idx % 1000 == 0:
+            if batch_idx % 100 == 0:
                 # Validation
                 model.eval()
                 epoch_val_loss = 0.0

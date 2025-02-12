@@ -2,6 +2,7 @@ import torch
 from models.deepseek_v3 import DeepSeekV3
 import yaml
 from transformers import GPT2TokenizerFast
+from transformers import T5Tokenizer
 from seeding import set_seed
 from models.deepseek_v3 import DeepSeekV3
 from typing import List, Union
@@ -108,10 +109,9 @@ class TextGenerator:
 def load_model_and_tokenizer(model_path: str, model_config: dict) -> tuple:
     """Load model and tokenizer with proper error handling."""
     try:
-        tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
-        tokenizer.add_special_tokens({
-            "pad_token": "<|pad|>"
-        })
+        tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
+        model_config["vocab_size"] = len(tokenizer) # Update the loaded config if tokenizers change
+    
         
         model = DeepSeekV3(model_config)  
         checkpoint = torch.load(
@@ -144,9 +144,9 @@ def main():
         )
         # Define prompts
         prompts = [
-            "The space vehicle from USA was able",
-            "Artificial intelligence is transforming",
-            "Once upon a time, in a land far away"
+            "The space video shows ",
+            "HD quality game",
+            "Who is watching in 2024"
         ]
         generator = TextGenerator(model, tokenizer)   
         temps = [0.75,1.0,2.0,5.0]     
