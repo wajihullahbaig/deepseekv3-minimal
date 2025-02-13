@@ -147,13 +147,13 @@ def main():
         )
         # Define prompts
         prompts = [
-            "The space video shows ",
-            "HD quality game",
+            "telegram and whatsapp accounts trying to have you claim a prize through ",
+            "දරුවන්ටත් එක්ක හෙන 7ගහනව යකො",
             "Who is watching in 2024"
         ]
         generator = TextGenerator(model, tokenizer)   
         temps = [1.0,2.0]     
-        topks = [50,75]
+        topks = [25,50]
         topps = [0.90,0.95]
         penalties = [0.9,1.0, 1.2]
         for temp in temps:
