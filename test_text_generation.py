@@ -1,7 +1,6 @@
 import torch
 from models.deepseek_v3 import DeepSeekV3
 import yaml
-from transformers import GPT2TokenizerFast
 from transformers import T5Tokenizer
 from seeding import set_seed
 from models.deepseek_v3 import DeepSeekV3
@@ -39,7 +38,13 @@ class TextGenerator:
         
         generated_texts = []
         for prompt in prompts:
-            input_ids = self.tokenizer.encode(prompt, return_tensors='pt').to(self.device)
+            input_ids = self.tokenizer.encode(
+            prompt,
+            return_tensors='pt',
+            truncation=True,           
+            max_length=config.max_length,
+            add_special_tokens=False   
+            ).to(self.device)
             generated = input_ids.clone()
             
             # Early stopping variables
@@ -109,16 +114,8 @@ class TextGenerator:
 def load_model_and_tokenizer(model_path: str, model_config: dict) -> tuple:
     """Load model and tokenizer with proper error handling."""
     try:
-        #tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
-        tokenizer = GPT2TokenizerFast.from_pretrained('gpt2')
-        # Add special tokens to the tokenizer
-        if isinstance(tokenizer,GPT2TokenizerFast):
-            tokenizer.add_special_tokens({
-                "pad_token": "<|pad|>"        
-            })
-            model_config["vocab_size"] = len(tokenizer) # Update the loaded config if tokenizers change
-    
-        
+        tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')        
+        model_config["vocab_size"] = len(tokenizer) 
         model = DeepSeekV3(model_config)  
         checkpoint = torch.load(
             f"{model_path}",
@@ -155,10 +152,10 @@ def main():
             "Who is watching in 2024"
         ]
         generator = TextGenerator(model, tokenizer)   
-        temps = [0.75,1.0,2.0,5.0]     
-        topks = [25,50]
+        temps = [1.0,2.0]     
+        topks = [50,75]
         topps = [0.90,0.95]
-        penalties = [1.0, 1.2]
+        penalties = [0.9,1.0, 1.2]
         for temp in temps:
             for topk in topks:
                 for topp in topps:

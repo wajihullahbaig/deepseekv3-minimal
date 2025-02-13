@@ -5,7 +5,6 @@ from models.deepseek_v3 import DeepSeekV3
 from seeding import set_seed
 from trainable_params import print_trainable_parameters
 from training.train import train
-from transformers import GPT2TokenizerFast
 from transformers import T5Tokenizer
 
 def load_config(config_file):
@@ -19,12 +18,8 @@ def wikipedia_main():
     train_config = load_config('config/train.yaml')
     model_config = load_config('config/model.yaml')
 
-    tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
-    # Add special tokens to the tokenizer
-    tokenizer.add_special_tokens({
-        "pad_token": "<|pad|>"        
-    })
-    model_config["vocab_size"] = len(tokenizer) # We added a special token. So Lets update
+    tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
+    model_config["vocab_size"] = len(tokenizer) 
     model = DeepSeekV3(model_config)    
     print("Preparing data, please wait...")
     train_loader, val_loader, test_loader = wiki_create_datasets_and_loaders(
@@ -50,7 +45,7 @@ def youtube_comments_main():
     model_config = load_config('config/model.yaml')
 
     tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
-    model_config["vocab_size"] = len(tokenizer) # Update the loaded config if tokenizers change
+    model_config["vocab_size"] = len(tokenizer) 
     model = DeepSeekV3(model_config)    
     print("Preparing data, please wait...")
     csv_path = "C:/Users/Precision/Onus/Data/YoutubeCommentsDataSet.csv"
@@ -71,5 +66,5 @@ def youtube_comments_main():
     
     train(model, train_loader,test_loader, val_loader, {**config, **train_config})
 if __name__ == "__main__":
-    wikipedia_main()
-    #youtube_comments_main()
+    #wikipedia_main()
+    youtube_comments_main()
