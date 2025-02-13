@@ -41,7 +41,7 @@ def wikipedia_main():
     print_trainable_parameters(model, unit="M")
     model.to(config['device'])
     
-    train(model, train_loader, val_loader, {**config, **train_config})
+    train(model, train_loader, test_loader,val_loader, {**config, **train_config})
 
 def youtube_comments_main():
     config = load_config('config/base.yaml')
@@ -69,7 +69,7 @@ def youtube_comments_main():
     print_trainable_parameters(model, unit="M")
     model.to(config['device'])
     
-    train(model, train_loader, val_loader, {**config, **train_config})
+    train(model, train_loader,test_loader, val_loader, {**config, **train_config})
 if __name__ == "__main__":
-    #wikipedia_main()
-    youtube_comments_main()
+    wikipedia_main()
+    #youtube_comments_main()

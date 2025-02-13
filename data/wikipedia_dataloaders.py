@@ -70,11 +70,11 @@ class WikipediaTextDataset(Dataset):
                 output_ids[-1] = self.tokenizer.eos_token_id  # Set EOS                
                 return input_ids, attention_mask, output_ids
 
-def preprocess_and_chunk_dataset(dataset, min_length, max_length, tokenizer,input_colum):
+def preprocess_and_chunk_dataset(dataset, min_length, max_length, tokenizer,input_column):
     cleaned_chunks = []
     
     for item in tqdm(dataset, desc="Processing items", unit="item"):
-        text = item[input_colum]
+        text = item[input_column]
         cleaned_text = clean_wikipedia_text(text)
         
         if len(cleaned_text.split()) < min_length:
@@ -91,8 +91,8 @@ def preprocess_and_chunk_dataset(dataset, min_length, max_length, tokenizer,inpu
     return cleaned_chunks
 
 def wiki_create_datasets_and_loaders(tokenizer, batch_size=32, min_length=5, max_length=512, device='cpu'):
-    dataset = load_dataset("wikipedia", "20220301.simple", split="train[:5000]")
-    cleaned_chunks = preprocess_and_chunk_dataset(dataset, min_length, max_length, tokenizer)
+    dataset = load_dataset("wikipedia", "20220301.simple", split="train[:20000]")
+    cleaned_chunks = preprocess_and_chunk_dataset(dataset, min_length, max_length, tokenizer,'text')
     
     full_dataset = WikipediaTextDataset(
         cleaned_chunks,

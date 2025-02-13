@@ -72,9 +72,9 @@ class YoutubeCommentsTextDataset(Dataset):
                 output_ids[-1] = self.tokenizer.eos_token_id  # Set EOS                
                 return input_ids, attention_mask, output_ids
 
-def preprocess_and_chunk_dataset(df, min_length, max_length, tokenizer,input_colum):
+def preprocess_and_chunk_dataset(df, min_length, max_length, tokenizer,input_column):
     cleaned_chunks = []
-    dataset = df[input_colum].dropna().tolist()
+    dataset = df[input_column].dropna().tolist()
     for text in tqdm(dataset, desc="Processing items", unit="item"):
             
         if len(text.split()) < min_length:
