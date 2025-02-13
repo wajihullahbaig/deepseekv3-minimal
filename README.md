@@ -23,3 +23,10 @@ are not required. Therefore, to make things simple, this repo exists.
 
 ![Losses](loss_plot.png)
 
+
+## Datasets
+[Youtube Comments](https://www.kaggle.com/datasets/atifaliak/youtube-comments-dataset/data)
+
+[Huggingface Wikipedia](https://huggingface.co/datasets/legacy-datasets/wikipedia/tree/main/data/20220301.simple)
+
+
