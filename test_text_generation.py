@@ -109,8 +109,14 @@ class TextGenerator:
 def load_model_and_tokenizer(model_path: str, model_config: dict) -> tuple:
     """Load model and tokenizer with proper error handling."""
     try:
-        tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
-        model_config["vocab_size"] = len(tokenizer) # Update the loaded config if tokenizers change
+        #tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
+        tokenizer = GPT2TokenizerFast.from_pretrained('gpt2')
+        # Add special tokens to the tokenizer
+        if isinstance(tokenizer,GPT2TokenizerFast):
+            tokenizer.add_special_tokens({
+                "pad_token": "<|pad|>"        
+            })
+            model_config["vocab_size"] = len(tokenizer) # Update the loaded config if tokenizers change
     
         
         model = DeepSeekV3(model_config)  
@@ -139,7 +145,7 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_30.pt",
+            model_path="checkpoints/checkpoint_epoch_5.pt",
             model_config=model_config
         )
         # Define prompts
@@ -151,7 +157,7 @@ def main():
         generator = TextGenerator(model, tokenizer)   
         temps = [0.75,1.0,2.0,5.0]     
         topks = [25,50]
-        topps = [0.90,95]
+        topps = [0.90,0.95]
         penalties = [1.0, 1.2]
         for temp in temps:
             for topk in topks:
