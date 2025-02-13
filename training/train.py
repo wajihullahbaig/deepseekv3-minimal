@@ -66,49 +66,48 @@ def train(model, train_loader, test_loader,val_loader, config):
 
             epoch_train_loss += total_loss.item()
 
-            if batch_idx % 10 == 0:
-                print(f"Epoch {epoch+1}, Batch {batch_idx}/{len(train_loader)}, Train Loss: {total_loss.item():.4f}")       
-
             if batch_idx % 100 == 0:
-                # Validation
-                model.eval()
-                epoch_test_loss = 0.0
-                with torch.no_grad():
-                    for batch in test_loader:
-                        input_ids, attention_mask, target_ids = batch
-                        input_ids = input_ids.to(config['device'])
-                        attention_mask = attention_mask.to(config['device']) if attention_mask is not None else None
-                        target_ids = target_ids.to(config['device'])
-
-                        if attention_mask.dim() == 2:
-                            attention_mask = attention_mask[:, None, :, None].expand(-1, model.config['num_heads'], -1, -1)
-
-                        outputs, mtp_outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
-
-                        main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))
-                        # Get seq_len from mtp_outputs
-                        depth, seq_len, hidden_dim = mtp_outputs.size(1), mtp_outputs.size(2), mtp_outputs.size(3)
-
-                        # Use seq_len to compute MTP loss
-                        mtp_loss = 0.0
-                        for k in range(depth):
-                            mtp_output_k = mtp_outputs[:, k, :, :]  # [batch_size, seq_len, hidden_dim]
-                            mtp_logits = model.output_head(mtp_output_k)  # [batch_size, seq_len, vocab_size]
-                            target_k = target_ids[:, k * seq_len : (k + 1) * seq_len]  # Slice targets for depth k
-                            mtp_loss += criterion(mtp_logits.view(-1, mtp_logits.size(-1)), target_k.view(-1))
-                        mtp_loss /= depth
-
-                        total_loss = main_loss + mtp_loss
-                        epoch_test_loss += total_loss.item()
-
-                avg_test_loss = epoch_test_loss / len(test_loader)
-                test_losses.append(avg_test_loss)
-
-                print(f"Epoch {epoch+1}/{config['num_epochs']}, Test Loss: {avg_test_loss:.4f}")             
-                model.train()
-
+                print(f"Epoch {epoch+1}, Batch {batch_idx}/{len(train_loader)}, Train Loss: {total_loss.item():.4f}")       
+            
         avg_train_loss = epoch_train_loss / len(train_loader)
         train_losses.append(avg_train_loss)
+      
+        # Testing
+        model.eval()
+        epoch_test_loss = 0.0
+        with torch.no_grad():
+            for batch in test_loader:
+                input_ids, attention_mask, target_ids = batch
+                input_ids = input_ids.to(config['device'])
+                attention_mask = attention_mask.to(config['device']) if attention_mask is not None else None
+                target_ids = target_ids.to(config['device'])
+
+                if attention_mask.dim() == 2:
+                    attention_mask = attention_mask[:, None, :, None].expand(-1, model.config['num_heads'], -1, -1)
+
+                outputs, mtp_outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
+
+                main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))
+                # Get seq_len from mtp_outputs
+                depth, seq_len, hidden_dim = mtp_outputs.size(1), mtp_outputs.size(2), mtp_outputs.size(3)
+
+                # Use seq_len to compute MTP loss
+                mtp_loss = 0.0
+                for k in range(depth):
+                    mtp_output_k = mtp_outputs[:, k, :, :]  # [batch_size, seq_len, hidden_dim]
+                    mtp_logits = model.output_head(mtp_output_k)  # [batch_size, seq_len, vocab_size]
+                    target_k = target_ids[:, k * seq_len : (k + 1) * seq_len]  # Slice targets for depth k
+                    mtp_loss += criterion(mtp_logits.view(-1, mtp_logits.size(-1)), target_k.view(-1))
+                mtp_loss /= depth
+
+                total_loss = main_loss + mtp_loss
+                epoch_test_loss += total_loss.item()
+
+        avg_test_loss = epoch_test_loss / len(test_loader)
+        test_losses.append(avg_test_loss)
+
+        print(f"Epoch {epoch+1}/{config['num_epochs']}, Test Loss: {avg_test_loss:.4f}")             
+    
 
         # Validation
         model.eval()
