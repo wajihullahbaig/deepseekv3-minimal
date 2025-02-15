@@ -142,20 +142,20 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_5.pt",
+            model_path="checkpoints_wiki/checkpoint_epoch_49.pt",
             model_config=model_config
         )
         # Define prompts
         prompts = [
-            "telegram and whatsapp accounts trying to have you claim a prize through ",
-            "දරුවන්ටත් එක්ක හෙන 7ගහනව යකො",
-            "Who is watching in 2024"
+            "Future of AI is very" ,
+            "Political aspiration of the US citizens ",
+            "Water is a chemical "
         ]
         generator = TextGenerator(model, tokenizer)   
-        temps = [1.0,2.0]     
-        topks = [25,50]
-        topps = [0.90,0.95]
-        penalties = [0.9,1.0, 1.2]
+        temps = [1.2,2.0]     
+        topks = [50]
+        topps = [0.95]
+        penalties = [1.2]
         for temp in temps:
             for topk in topks:
                 for topp in topps:

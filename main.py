@@ -1,6 +1,6 @@
 import yaml
-from data.wikipedia_dataloaders import wiki_create_datasets_and_loaders
-from data.youtube_dataloaders import yt_create_datasets_and_loaders
+from data.wikipedia_dataloaders import create_wikipedia_loaders
+from data.youtube_dataloaders import create_yt_and_loaders
 from models.deepseek_v3 import DeepSeekV3
 from seeding import set_seed
 from trainable_params import print_trainable_parameters
@@ -22,11 +22,12 @@ def wikipedia_main():
     model_config["vocab_size"] = len(tokenizer) 
     model = DeepSeekV3(model_config)    
     print("Preparing data, please wait...")
-    train_loader, val_loader, test_loader = wiki_create_datasets_and_loaders(
+    train_loader, val_loader, test_loader = create_wikipedia_loaders(
         tokenizer,
         batch_size=train_config['batch_size'],
         min_length = model_config["min_seq_len"],
         max_length=model_config['max_seq_len'],
+        stride=model_config['stride'],
         device=config['device']
         )
     config["pad_token_id"] = tokenizer.pad_token_id
@@ -49,12 +50,13 @@ def youtube_comments_main():
     model = DeepSeekV3(model_config)    
     print("Preparing data, please wait...")
     csv_path = "C:/Users/Precision/Onus/Data/YoutubeCommentsDataSet.csv"
-    train_loader, val_loader, test_loader = yt_create_datasets_and_loaders(
+    train_loader, val_loader, test_loader = create_yt_and_loaders(
         csv_path,
         tokenizer,
         batch_size=train_config['batch_size'],
         min_length = model_config["min_seq_len"],
         max_length=model_config['max_seq_len'],
+        stride=model_config['stride'],
         device=config['device']
         )
     config["pad_token_id"] = tokenizer.pad_token_id

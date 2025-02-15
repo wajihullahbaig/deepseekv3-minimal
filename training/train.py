@@ -66,7 +66,7 @@ def train(model, train_loader, test_loader,val_loader, config):
 
             epoch_train_loss += total_loss.item()
 
-            if batch_idx % 100 == 0:
+            if batch_idx % 50 == 0:
                 print(f"Epoch {epoch+1}, Batch {batch_idx}/{len(train_loader)}, Train Loss: {total_loss.item():.4f}")       
             
         avg_train_loss = epoch_train_loss / len(train_loader)

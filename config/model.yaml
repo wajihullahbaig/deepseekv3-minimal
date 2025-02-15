@@ -11,4 +11,5 @@ activated_experts: 4
 vocab_size : 50258
 min_seq_len: 5
 max_seq_len: 64 
+stride: 32
 
