@@ -1,15 +1,15 @@
 # Model configuration
-num_layers: 4
-hidden_dim: 64
-num_heads: 4
-head_dim: 64
-rope_dim: 64
-kv_compression_dim: 32
-query_compression_dim: 32 
-num_experts: 4
-activated_experts: 4
+num_layers: 2
+hidden_dim: 32
+num_heads: 8
+head_dim: 32
+rope_dim: 32
+kv_compression_dim: 16
+query_compression_dim: 16 
+num_experts: 32
+activated_experts: 16
 vocab_size : 50258
 min_seq_len: 5
 max_seq_len: 64 
-stride: 32
+stride: 8
 
