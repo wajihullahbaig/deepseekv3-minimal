@@ -3,6 +3,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 import pandas as pd
 from tqdm import tqdm
 import torch
+from data.preprocessing import random_deletion, random_shuffle
 
 
 class YoutubeCommentsTextDataset(Dataset):
@@ -13,8 +14,8 @@ class YoutubeCommentsTextDataset(Dataset):
         self.augmentation_prob = augmentation_prob
         self.device = device
         self.augmentations = [
-            self.random_shuffle,
-            self.random_deletion
+            random_shuffle,
+            random_deletion
         ]
     
     def __len__(self):
@@ -22,45 +23,57 @@ class YoutubeCommentsTextDataset(Dataset):
     
     def __getitem__(self, idx):
         original_input_ids = self.token_chunks[idx]
-        input_text = self.tokenizer.decode(original_input_ids, skip_special_tokens=True)
+        original_text = self.tokenizer.decode(original_input_ids, skip_special_tokens=True)
         
-        augmented_text = input_text
+        augmented_text = original_text
         if random.random() < self.augmentation_prob:
             augmentation = random.choice(self.augmentations)
             augmented_text = augmentation(augmented_text)
         
-        encoding = self.tokenizer(
-            augmented_text,
+            input_encoding = self.tokenizer(
+                augmented_text,
+                max_length=self.max_length,
+                padding="max_length",
+                truncation=True,
+                add_special_tokens=True,
+                return_tensors="pt"
+            )
+            input_ids = input_encoding["input_ids"].squeeze().to(self.device)
+            attention_mask = input_encoding["attention_mask"].squeeze().to(self.device)            
+
+            output_encoding = self.tokenizer(
+                original_text,
+                max_length=self.max_length,
+                padding="max_length",
+                truncation=True,
+                add_special_tokens=True,
+                return_tensors="pt"
+            )
+            output_ids = output_encoding["input_ids"].squeeze().to(self.device)            
+            return {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "output_ids": output_ids
+            }        
+        else:
+            input_encoding = self.tokenizer(
+            original_text,
             max_length=self.max_length,
             padding="max_length",
             truncation=True,
             add_special_tokens=True,
             return_tensors="pt"
-        )
-        input_ids = encoding["input_ids"].squeeze().to(self.device)
-        attention_mask = encoding["attention_mask"].squeeze().to(self.device)
-        
-        output_ids = input_ids.clone()
-        output_ids[:-1] = input_ids[1:]
-        output_ids[-1] = self.tokenizer.eos_token_id
-        
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "output_ids": output_ids
-        }
-
-    @staticmethod
-    def random_shuffle(text):
-        words = text.split()
-        random.shuffle(words)
-        return " ".join(words)
-    
-    @staticmethod
-    def random_deletion(text):
-        words = text.split()
-        remaining = [word for word in words if random.random() > 0.1]
-        return " ".join(remaining)
+             )
+            input_ids = input_encoding["input_ids"].squeeze().to(self.device)
+            attention_mask = input_encoding["attention_mask"].squeeze().to(self.device)            
+            output_ids = input_ids.clone()
+            output_ids[:-1] = input_ids[1:]
+            output_ids[-1] = self.tokenizer.eos_token_id                            
+            return {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "output_ids": output_ids
+            }
 
 
 def preprocess_and_chunk_dataframe(df, tokenizer, max_length, stride, min_length, input_column):

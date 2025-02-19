@@ -1,11 +1,10 @@
 import random
-from nltk.tokenize import sent_tokenize
 from torch.utils.data import DataLoader, Dataset, random_split
 from transformers import AutoTokenizer
 from datasets import load_dataset
 from tqdm import tqdm
 import torch
-from data.preprocessing import clean_wikipedia_text
+from data.preprocessing import clean_wikipedia_text, random_deletion, random_shuffle
 
 class WikipediaTextDataset(torch.utils.data.Dataset):
     def __init__(self, token_chunks, tokenizer, max_length, augmentation_prob=0.5, device="cuda" if torch.cuda.is_available() else "cpu"):
@@ -15,8 +14,8 @@ class WikipediaTextDataset(torch.utils.data.Dataset):
         self.augmentation_prob = augmentation_prob
         self.device = device
         self.augmentations = [
-            self.random_shuffle,
-            self.random_deletion
+            random_shuffle,
+            random_deletion
         ]
     
     def __len__(self):
@@ -24,45 +23,60 @@ class WikipediaTextDataset(torch.utils.data.Dataset):
     
     def __getitem__(self, idx):
         original_input_ids = self.token_chunks[idx]
-        input_text = self.tokenizer.decode(original_input_ids, skip_special_tokens=True)
+        original_text = self.tokenizer.decode(original_input_ids, skip_special_tokens=True)
         
-        augmented_text = input_text
+        augmented_text = original_text
         if random.random() < self.augmentation_prob:
             augmentation = random.choice(self.augmentations)
             augmented_text = augmentation(augmented_text)
         
-        encoding = self.tokenizer(
-            augmented_text,
+            input_encoding = self.tokenizer(
+                augmented_text,
+                max_length=self.max_length,
+                padding="max_length",
+                truncation=True,
+                add_special_tokens=True,
+                return_tensors="pt"
+            )
+            input_ids = input_encoding["input_ids"].squeeze().to(self.device)
+            attention_mask = input_encoding["attention_mask"].squeeze().to(self.device)            
+
+            output_encoding = self.tokenizer(
+                original_text,
+                max_length=self.max_length,
+                padding="max_length",
+                truncation=True,
+                add_special_tokens=True,
+                return_tensors="pt"
+            )
+            output_ids = output_encoding["input_ids"].squeeze().to(self.device)            
+            return {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "output_ids": output_ids
+            }        
+        else:
+            input_encoding = self.tokenizer(
+            original_text,
             max_length=self.max_length,
             padding="max_length",
             truncation=True,
             add_special_tokens=True,
             return_tensors="pt"
-        )
-        input_ids = encoding["input_ids"].squeeze().to(self.device)
-        attention_mask = encoding["attention_mask"].squeeze().to(self.device)
+             )
+            input_ids = input_encoding["input_ids"].squeeze().to(self.device)
+            attention_mask = input_encoding["attention_mask"].squeeze().to(self.device)            
+            output_ids = input_ids.clone()
+            output_ids[:-1] = input_ids[1:]
+            output_ids[-1] = self.tokenizer.eos_token_id                            
+            return {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "output_ids": output_ids
+            }
         
-        output_ids = input_ids.clone()
-        output_ids[:-1] = input_ids[1:]
-        output_ids[-1] = self.tokenizer.eos_token_id
-        
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "output_ids": output_ids
-        }
 
-    @staticmethod
-    def random_shuffle(text):
-        words = text.split()
-        random.shuffle(words)
-        return " ".join(words)
-    
-    @staticmethod
-    def random_deletion(text):
-        words = text.split()
-        remaining = [word for word in words if random.random() > 0.1]
-        return " ".join(remaining)
+
 
 def preprocess_and_chunk_dataset(dataset, tokenizer, max_length, stride, min_length):
     tokenized_samples = []
