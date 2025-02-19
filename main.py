@@ -28,7 +28,7 @@ def wikipedia_main():
         min_length = model_config["min_seq_len"],
         max_length=model_config['max_seq_len'],
         stride=model_config['stride'],
-        device=config['device']
+        device='cpu'
         )
     config["pad_token_id"] = tokenizer.pad_token_id
     print(f"Number of batches in train_loader: {len(train_loader)}")
@@ -57,7 +57,7 @@ def youtube_comments_main():
         min_length = model_config["min_seq_len"],
         max_length=model_config['max_seq_len'],
         stride=model_config['stride'],
-        device=config['device']
+        device='cpu'
         )
     config["pad_token_id"] = tokenizer.pad_token_id
     print(f"Number of batches in train_loader: {len(train_loader)}")
@@ -68,5 +68,5 @@ def youtube_comments_main():
     
     train(model, train_loader,test_loader, val_loader, {**config, **train_config})
 if __name__ == "__main__":
-    #wikipedia_main()
-    youtube_comments_main()
+    wikipedia_main()
+    #youtube_comments_main()

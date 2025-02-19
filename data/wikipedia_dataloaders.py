@@ -7,7 +7,7 @@ import torch
 from data.preprocessing import clean_wikipedia_text, random_deletion, random_shuffle
 
 class WikipediaTextDataset(torch.utils.data.Dataset):
-    def __init__(self, token_chunks, tokenizer, max_length, augmentation_prob=0.5, device="cuda" if torch.cuda.is_available() else "cpu"):
+    def __init__(self, token_chunks, tokenizer, max_length, augmentation_prob=0.5, device=None):
         self.token_chunks = token_chunks
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -100,7 +100,7 @@ def collate_fn(batch):
 from torch.utils.data import Dataset, DataLoader, random_split
 
 def create_wikipedia_loaders(tokenizer, batch_size=32, min_length=20, max_length=128, stride=64, device="cuda", num_workers=1, drop_last=True):
-    dataset = load_dataset("wikipedia", "20220301.simple", split="train[:2000]")
+    dataset = load_dataset("wikipedia", "20220301.simple", split="train[:50]")
     token_chunks = preprocess_and_chunk_dataset(dataset, tokenizer, max_length, stride, min_length)
     
     full_dataset = WikipediaTextDataset(token_chunks, tokenizer, max_length, device=device)

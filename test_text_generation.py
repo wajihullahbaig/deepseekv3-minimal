@@ -147,18 +147,16 @@ def main():
         )
         # Define prompts
         prompts = [
-            "Science shows are great for ",
-            "Whos is watching in ",
-            "Millenials be like, ",
-            "Not a single woerd",
-            "Link in the "
+            " seen for a while this is reallly",
+            "going to shake up how the qualiity of ",
+            "even basic components are manufactured ",            
 
         ]
         generator = TextGenerator(model, tokenizer)   
-        temps = [0.5,0.75,1.0,1.2]     
-        topks = [10]
-        topps = [0.98]
-        penalties = [1.2]
+        temps = [0.9,1.2]     
+        topks = [50]
+        topps = [0.90,0.95,0.98]
+        penalties = [1.0,1.2,2.0]
         for temp in temps:
             for topk in topks:
                 for topp in topps:

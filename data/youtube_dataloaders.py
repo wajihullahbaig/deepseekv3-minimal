@@ -7,7 +7,7 @@ from data.preprocessing import random_deletion, random_shuffle
 
 
 class YoutubeCommentsTextDataset(Dataset):
-    def __init__(self, token_chunks, tokenizer, max_length, augmentation_prob=0.5, device="cuda" if torch.cuda.is_available() else "cpu"):
+    def __init__(self, token_chunks, tokenizer, max_length, augmentation_prob=0.5, device=None):
         self.token_chunks = token_chunks
         self.tokenizer = tokenizer
         self.max_length = max_length
