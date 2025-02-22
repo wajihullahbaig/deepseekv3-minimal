@@ -1,6 +1,5 @@
 import random
 from torch.utils.data import DataLoader, Dataset, random_split
-from transformers import AutoTokenizer
 from datasets import load_dataset
 from tqdm import tqdm
 import torch
@@ -97,21 +96,33 @@ def collate_fn(batch):
     return input_ids,attention_mask,output_ids
     
 
-from torch.utils.data import Dataset, DataLoader, random_split
 
 def create_wikipedia_loaders(tokenizer, batch_size=32, min_length=20, max_length=128, stride=64, device="cuda", num_workers=1, drop_last=True):
-    dataset = load_dataset("wikipedia", "20220301.simple", split="train[:50]")
+    # Load the dataset
+    dataset = load_dataset("wikipedia", "20220301.simple", split="train[:2000]")
+    
+    # Preprocess and chunk the dataset
     token_chunks = preprocess_and_chunk_dataset(dataset, tokenizer, max_length, stride, min_length)
     
+    # Create the full dataset
     full_dataset = WikipediaTextDataset(token_chunks, tokenizer, max_length, device=device)
     
+    # Compute split sizes
     total_size = len(full_dataset)
     train_size = int(0.7 * total_size)
     val_size = int(0.15 * total_size)
-    test_size = total_size - train_size - val_size
-    
-    train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size])
-    
+
+    # Precompute indices for splits
+    train_indices = list(range(0, train_size))
+    val_indices = list(range(train_size, train_size + val_size))
+    test_indices = list(range(train_size + val_size, total_size))
+
+    # Create subsets using indices
+    train_dataset = torch.utils.data.Subset(full_dataset, train_indices)
+    val_dataset = torch.utils.data.Subset(full_dataset, val_indices)
+    test_dataset = torch.utils.data.Subset(full_dataset, test_indices)
+
+    # Create data loaders
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -120,7 +131,7 @@ def create_wikipedia_loaders(tokenizer, batch_size=32, min_length=20, max_length
         num_workers=num_workers,
         drop_last=drop_last
     )
-    
+
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
@@ -129,7 +140,7 @@ def create_wikipedia_loaders(tokenizer, batch_size=32, min_length=20, max_length
         num_workers=num_workers,
         drop_last=drop_last
     )
-    
+
     test_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
@@ -138,5 +149,5 @@ def create_wikipedia_loaders(tokenizer, batch_size=32, min_length=20, max_length
         num_workers=num_workers,
         drop_last=drop_last
     )
-    
+
     return train_loader, val_loader, test_loader

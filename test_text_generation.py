@@ -142,21 +142,21 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints_yt/checkpoint_epoch_99.pt",
+            model_path="checkpoints/checkpoint_epoch_51.pt",
             model_config=model_config
         )
         # Define prompts
         prompts = [
-            " seen for a while this is reallly",
-            "going to shake up how the qualiity of ",
-            "even basic components are manufactured ",            
-
-        ]
+            "Well the video actually starts ",   
+            "Its Good learning to watch ",
+            "The video is actually ",
+            "Who is watching in ",
+           ]
         generator = TextGenerator(model, tokenizer)   
-        temps = [0.9,1.2]     
+        temps = [1.0,2.0]     
         topks = [50]
-        topps = [0.90,0.95,0.98]
-        penalties = [1.0,1.2,2.0]
+        topps = [0.95]
+        penalties = [1.2]
         for temp in temps:
             for topk in topks:
                 for topp in topps:
