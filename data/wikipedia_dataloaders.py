@@ -6,7 +6,7 @@ import torch
 from data.preprocessing import clean_wikipedia_text, random_deletion, random_shuffle
 
 class WikipediaTextDataset(torch.utils.data.Dataset):
-    def __init__(self, token_chunks, tokenizer, max_length, augmentation_prob=0.5, device=None):
+    def __init__(self, token_chunks, tokenizer, max_length, augmentation_prob=0.5,use_augmentations=True, device=None):
         self.token_chunks = token_chunks
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -16,6 +16,7 @@ class WikipediaTextDataset(torch.utils.data.Dataset):
             random_shuffle,
             random_deletion
         ]
+        self.use_augmentations = use_augmentations
     
     def __len__(self):
         return len(self.token_chunks)
@@ -25,7 +26,7 @@ class WikipediaTextDataset(torch.utils.data.Dataset):
         original_text = self.tokenizer.decode(original_input_ids, skip_special_tokens=True)
         
         augmented_text = original_text
-        if random.random() < self.augmentation_prob:
+        if random.random() < self.augmentation_prob and self.use_augmentations:
             augmentation = random.choice(self.augmentations)
             augmented_text = augmentation(augmented_text)
         
@@ -97,7 +98,7 @@ def collate_fn(batch):
     
 
 
-def create_wikipedia_loaders(tokenizer, batch_size=32, min_length=20, max_length=128, stride=64, device="cuda", num_workers=1, drop_last=True):
+def create_wikipedia_loaders(tokenizer, batch_size=32, min_length=20, max_length=128, stride=64, device="cuda", num_workers=1, drop_last=True,use_augmentations=True):
     # Load the dataset
     dataset = load_dataset("wikipedia", "20220301.simple", split="train[:2000]")
     
@@ -105,7 +106,7 @@ def create_wikipedia_loaders(tokenizer, batch_size=32, min_length=20, max_length
     token_chunks = preprocess_and_chunk_dataset(dataset, tokenizer, max_length, stride, min_length)
     
     # Create the full dataset
-    full_dataset = WikipediaTextDataset(token_chunks, tokenizer, max_length, device=device)
+    full_dataset = WikipediaTextDataset(token_chunks, tokenizer, max_length,use_augmentations, device=device)
     
     # Compute split sizes
     total_size = len(full_dataset)

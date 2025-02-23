@@ -238,21 +238,22 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_10.pt",
+            model_path="checkpoints/checkpoint_epoch_80.pt",
             model_config=model_config
         )
         # Define prompts
         prompts = [
-            "i wish i saw this 6 months ago ive been trying to transition careers from physics to data science and after not having much luck despite what i thought to b",
+            "i wish i saw this 6 months ago ive been trying to transition careers ",
+            "from physics to data science and after not having much luck despite what i thought to b",
             "data analysis i agree with every point here being in the everlasting learning process was particularly exhausting "
         ]
         generator = TextGenerator(model, tokenizer)   
         gen_config = GenerationConfig(
             max_length=50,
-            temperature=1.2,
+            temperature=1.3,
             top_k=50,
-            top_p=0.98,
-            repetition_penalty=1.3,
+            top_p=0.99,
+            repetition_penalty=2.0,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.pad_token_id
         )

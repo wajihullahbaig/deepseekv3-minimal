@@ -7,7 +7,7 @@ from data.preprocessing import random_deletion, random_shuffle
 
 
 class YoutubeCommentsTextDataset(Dataset):
-    def __init__(self, token_chunks, tokenizer, max_length, augmentation_prob=0.5, device=None):
+    def __init__(self, token_chunks, tokenizer, max_length, augmentation_prob=0.5,use_augmentations=True, device=None):
         self.token_chunks = token_chunks
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -17,6 +17,7 @@ class YoutubeCommentsTextDataset(Dataset):
             random_shuffle,
             random_deletion
         ]
+        self.use_augmentations = use_augmentations
     
     def __len__(self):
         return len(self.token_chunks)
@@ -26,7 +27,7 @@ class YoutubeCommentsTextDataset(Dataset):
         original_text = self.tokenizer.decode(original_input_ids, skip_special_tokens=True)
         
         augmented_text = original_text
-        if random.random() < self.augmentation_prob:
+        if random.random() < self.augmentation_prob and self.use_augmentations:
             augmentation = random.choice(self.augmentations)
             augmented_text = augmentation(augmented_text)
         
@@ -78,7 +79,7 @@ class YoutubeCommentsTextDataset(Dataset):
 
 def preprocess_and_chunk_dataframe(df, tokenizer, max_length, stride, min_length, input_column):
     tokenized_samples = []
-    dataset = df[input_column].dropna().tolist()
+    dataset = df[input_column].dropna().tolist()[:5000]    
     for text in tqdm(dataset, desc="Processing items", unit="item"):
         token_ids = tokenizer.encode(text, add_special_tokens=True, truncation=False)
         if len(token_ids) < min_length:
@@ -94,7 +95,7 @@ def collate_fn(batch):
     output_ids = torch.stack([item["output_ids"] for item in batch])
     return input_ids,attention_mask,output_ids
 
-def create_yt_and_loaders(csv_path, tokenizer, batch_size=32, min_length=5, max_length=512, stride = 128,device='cpu',num_workers=0,drop_last=True):
+def create_yt_and_loaders(csv_path, tokenizer, batch_size=32, min_length=5, max_length=512, stride = 128,device='cpu',num_workers=0,drop_last=True,use_augmentations=True):
     """
     Reads the CSV file, preprocesses the data, creates datasets, and returns data loaders.
     """
@@ -103,7 +104,7 @@ def create_yt_and_loaders(csv_path, tokenizer, batch_size=32, min_length=5, max_
     
     token_chunks = preprocess_and_chunk_dataframe(df, tokenizer, max_length, stride, min_length, input_column="Comment")
     
-    full_dataset = YoutubeCommentsTextDataset(token_chunks, tokenizer, max_length, device=device)
+    full_dataset = YoutubeCommentsTextDataset(token_chunks, tokenizer, max_length,use_augmentations, device=device)
     
     total_size = len(full_dataset)
     train_size = int(0.7 * total_size)

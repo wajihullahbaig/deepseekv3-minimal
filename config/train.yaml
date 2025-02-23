@@ -1,6 +1,7 @@
 # Training configuration
-batch_size: 16
+batch_size: 24
 learning_rate: 0.00075
 num_epochs: 100
 gradient_clip: 1.0
 warmup_steps: 500
+use_augmentations: False
