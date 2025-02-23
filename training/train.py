@@ -143,7 +143,7 @@ def train(model, train_loader, test_loader,val_loader, config):
         avg_val_loss = epoch_val_loss / len(test_loader)
         val_losses.append(avg_val_loss)
 
-        print(f"Epoch {epoch+1}/{config['num_epochs']}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
+        print(f"Epoch {epoch+1}/{config['num_epochs']}, Val Loss: {avg_val_loss:.4f}")
 
         # Save checkpoint
         save_checkpoint(model, optimizer, epoch, config)
