@@ -67,7 +67,55 @@ def train(model, train_loader, test_loader,val_loader, config):
             epoch_train_loss += total_loss.item()
 
             if batch_idx % 100 == 0:
-                print(f"Epoch {epoch+1}, Batch {batch_idx}/{len(train_loader)}, Train Loss: {total_loss.item():.4f}")       
+                print(f"Epoch {epoch+1}, Batch {batch_idx}/{len(train_loader)}, Train Loss: {total_loss.item():.4f}")      
+
+            if batch_idx % 1000 == 0:
+                # Testing
+                model.eval()
+                epoch_test_loss = 0.0
+                with torch.no_grad():
+                    for batch in test_loader:
+                        input_ids, attention_mask, target_ids = batch
+                        input_ids = input_ids.to(config['device'])
+                        attention_mask = attention_mask.to(config['device']) if attention_mask is not None else None
+                        target_ids = target_ids.to(config['device'])
+
+                        outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
+                        main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))  
+
+                        total_loss = main_loss 
+                        epoch_test_loss += total_loss.item()
+
+                avg_test_loss = epoch_test_loss / len(test_loader)
+                test_losses.append(avg_test_loss)
+
+                print(f"Epoch {epoch+1}/{config['num_epochs']}, Test Loss: {avg_test_loss:.4f}")             
+            
+
+                # Validation
+                model.eval()
+                epoch_val_loss = 0.0
+                with torch.no_grad():
+                    for batch in val_loader:
+                        input_ids, attention_mask, target_ids = batch
+                        input_ids = input_ids.to(config['device'])
+                        attention_mask = attention_mask.to(config['device']) if attention_mask is not None else None
+                        target_ids = target_ids.to(config['device'])
+
+                        outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
+                        main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))                
+
+                        total_loss = main_loss 
+                        epoch_val_loss += total_loss.item()
+
+                avg_val_loss = epoch_val_loss / len(val_loader)
+                val_losses.append(avg_val_loss)
+
+                print(f"Epoch {epoch+1}/{config['num_epochs']}, Val Loss: {avg_val_loss:.4f}")
+                # Save checkpoint
+                save_checkpoint(model, optimizer, epoch, batch_idx)
+                model.train()
+
             
         avg_train_loss = epoch_train_loss / len(train_loader)
         train_losses.append(avg_train_loss)
@@ -116,6 +164,6 @@ def train(model, train_loader, test_loader,val_loader, config):
         print(f"Epoch {epoch+1}/{config['num_epochs']}, Val Loss: {avg_val_loss:.4f}")
 
         # Save checkpoint
-        save_checkpoint(model, optimizer, epoch, config)
+        save_checkpoint(model, optimizer, epoch, batch_idx)
 
     plot_metrics(train_losses, test_losses,val_losses)

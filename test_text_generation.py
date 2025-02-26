@@ -241,20 +241,21 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_0.pt",
+            model_path="checkpoints/checkpoint_epoch_0_1000.pt",
             model_config=model_config
         )
         # Define prompts
         prompts = [
-            "how awful sparse and misrepresented information on dash cams is i was totally",
-            " surprised how under developed they are this is a video that is really necessary"
+            "The number of people living inside the city proper used to be much higher",
+            "About 150,200 live in Oxford. Two rivers run through the city, the Cherwell and the Thames",
+            "A bookstore is a store that sells books, and where people can buy them"
         ]
         generator = TextGenerator(model, tokenizer)   
         gen_config = GenerationConfig(
             max_length=50,
-            temperature=0.8 ,
+            temperature=1.0,
             top_k=50,
-            top_p=0.92,
+            top_p=0.95,
             repetition_penalty=1.5,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.pad_token_id
