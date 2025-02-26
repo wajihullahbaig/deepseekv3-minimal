@@ -82,25 +82,10 @@ def train(model, train_loader, test_loader,val_loader, config):
                 attention_mask = attention_mask.to(config['device']) if attention_mask is not None else None
                 target_ids = target_ids.to(config['device'])
 
-                if attention_mask.dim() == 2:
-                    attention_mask = attention_mask[:, None, :, None].expand(-1, model.config['num_heads'], -1, -1)
+                outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
+                main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))  
 
-                outputs, mtp_outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
-
-                main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))
-                # Get seq_len from mtp_outputs
-                depth, seq_len, hidden_dim = mtp_outputs.size(1), mtp_outputs.size(2), mtp_outputs.size(3)
-
-                # Use seq_len to compute MTP loss
-                mtp_loss = 0.0
-                for k in range(depth):
-                    mtp_output_k = mtp_outputs[:, k, :, :]  # [batch_size, seq_len, hidden_dim]
-                    mtp_logits = model.output_head(mtp_output_k)  # [batch_size, seq_len, vocab_size]
-                    target_k = target_ids[:, k * seq_len : (k + 1) * seq_len]  # Slice targets for depth k
-                    mtp_loss += criterion(mtp_logits.view(-1, mtp_logits.size(-1)), target_k.view(-1))
-                mtp_loss /= depth
-
-                total_loss = main_loss + mtp_loss
+                total_loss = main_loss 
                 epoch_test_loss += total_loss.item()
 
         avg_test_loss = epoch_test_loss / len(test_loader)
@@ -119,28 +104,13 @@ def train(model, train_loader, test_loader,val_loader, config):
                 attention_mask = attention_mask.to(config['device']) if attention_mask is not None else None
                 target_ids = target_ids.to(config['device'])
 
-                if attention_mask.dim() == 2:
-                    attention_mask = attention_mask[:, None, :, None].expand(-1, model.config['num_heads'], -1, -1)
+                outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
+                main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))                
 
-                outputs, mtp_outputs = model(input_ids, attention_mask=attention_mask, target_ids=target_ids)
-
-                main_loss = criterion(outputs.view(-1, outputs.size(-1)), target_ids.view(-1))
-                # Get seq_len from mtp_outputs
-                depth, seq_len, hidden_dim = mtp_outputs.size(1), mtp_outputs.size(2), mtp_outputs.size(3)
-
-                # Use seq_len to compute MTP loss
-                mtp_loss = 0.0
-                for k in range(depth):
-                    mtp_output_k = mtp_outputs[:, k, :, :]  # [batch_size, seq_len, hidden_dim]
-                    mtp_logits = model.output_head(mtp_output_k)  # [batch_size, seq_len, vocab_size]
-                    target_k = target_ids[:, k * seq_len : (k + 1) * seq_len]  # Slice targets for depth k
-                    mtp_loss += criterion(mtp_logits.view(-1, mtp_logits.size(-1)), target_k.view(-1))
-                mtp_loss /= depth
-
-                total_loss = main_loss + mtp_loss
+                total_loss = main_loss 
                 epoch_val_loss += total_loss.item()
 
-        avg_val_loss = epoch_val_loss / len(test_loader)
+        avg_val_loss = epoch_val_loss / len(val_loader)
         val_losses.append(avg_val_loss)
 
         print(f"Epoch {epoch+1}/{config['num_epochs']}, Val Loss: {avg_val_loss:.4f}")

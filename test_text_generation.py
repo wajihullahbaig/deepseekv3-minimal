@@ -25,21 +25,74 @@ class TextGenerator:
         self.tokenizer = tokenizer
         self.device = device
         self.model.eval()
-        
-    def _create_causal_mask(self, bsz: int, seq_len: int) -> torch.Tensor:
-        """Create a causal mask to prevent attending to future tokens."""
-        mask = torch.tril(torch.ones(seq_len, seq_len, device=self.device)).bool()
-        mask = mask.unsqueeze(0).unsqueeze(0).expand(bsz, 1, seq_len, seq_len)
-        return mask
     
-    def generate_with_beam_search(self, prompts: Union[str, List[str]], config: GenerationConfig, beam_width: int = 3) -> Union[str, List[str]]:
+    def generate(self, prompts: Union[str, List[str]], config: GenerationConfig) -> Union[str, List[str]]:
+        if isinstance(prompts, str):
+            prompts = [prompts]
+        
+        generated_texts = []
+        for prompt in prompts:
+            input_ids = self.tokenizer.encode(
+                prompt,
+                return_tensors='pt',
+                truncation=True,           
+                max_length=config.max_length,
+                add_special_tokens=False   
+            ).to(self.device)
+            generated = input_ids.clone()
+            
+            # Early stopping variables
+            current_length = generated.size(1)
+            eos_reached = False
+            
+            while current_length < config.max_length and not eos_reached:
+                attention_mask = torch.ones_like(generated, device=self.device)
+                
+                # Model forward pass - note we don't need to pass target_ids during inference
+                outputs = self.model(generated, attention_mask=attention_mask)
+                
+                # Use outputs directly for next token prediction
+                logits = outputs[:, -1, :] / config.temperature
+                
+                for i in range(logits.size(0)):
+                    for previous_token in generated[i].unique():
+                        logits[i, previous_token] /= config.repetition_penalty
+
+                # Top-k and top-p filtering
+                if config.top_k != 0:
+                    logits = self._top_k(logits, config.top_k)
+                if config.top_p != 1.0:
+                    logits = self._top_p(logits, config.top_p)
+
+                # Sample next token
+                probs = F.softmax(logits, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1)
+
+                if next_token.item() == config.eos_token_id:
+                    eos_reached = True
+                
+                # Append token to sequence
+                generated = torch.cat([generated, next_token], dim=-1)
+                current_length += 1
+
+            # Convert to text and clean up special tokens
+            text = self.tokenizer.decode(
+                generated[0], 
+                skip_special_tokens=True, 
+                clean_up_tokenization_spaces=True
+            )
+            generated_texts.append(text)
+        
+        return generated_texts if len(generated_texts) > 1 else generated_texts[0]
+    
+    def generate_with_beam_search(self, prompts: Union[str, List[str]], config: GenerationConfig, beam_width: int = 7) -> Union[str, List[str]]:
         """
         Generate text using beam search with length normalization for better sentence quality.
         
         Args:
             prompts: Single prompt or list of prompts.
             config: GenerationConfig object with generation parameters.
-            beam_width: Number of beams to maintain during search (default: 5).
+            beam_width: Number of beams to maintain during search (default: 3).
         
         Returns:
             Generated text(s) as a string or list of strings.
@@ -73,11 +126,9 @@ class TextGenerator:
                         finished_beams.append((beam_seq, beam_score))
                         continue
                     
-                    # Create causal mask for current sequence
-                    causal_mask = self._create_causal_mask(beam_seq.size(0), beam_seq.size(1))
+                    attention_mask = torch.ones_like(beam_seq, device=self.device)
                     
-                    # Forward pass
-                    outputs = self.model(beam_seq, attention_mask=causal_mask)
+                    outputs = self.model(beam_seq, attention_mask=attention_mask)
                     logits = outputs[:, -1, :] / config.temperature
                     
                     # Apply repetition penalty
@@ -90,7 +141,6 @@ class TextGenerator:
                     if config.top_p != 1.0:
                         logits = self._top_p(logits, config.top_p)
                     
-                    # Get probabilities
                     probs = F.softmax(logits, dim=-1)
                     
                     # Get top beam_width candidates
@@ -111,101 +161,54 @@ class TextGenerator:
                 
                 # Move completed sequences to finished_beams
                 beams = [(seq, score) for seq, score in beams if seq[0, -1].item() != config.eos_token_id]
-                finished_beams.extend([(seq, score) for seq, score in beams if seq[0, -1].item() == config.eos_token_id])
+                finished_beams.extend([(seq, score) for seq, score in new_beams if seq[0, -1].item() == config.eos_token_id])
             
             # If no beams finished, take the best unfinished beam
             if not finished_beams and beams:
                 finished_beams = beams
             
             # Select the best sequence
-            best_seq, _ = max(finished_beams, key=lambda x: x[1])
-            text = self.tokenizer.decode(
-                best_seq[0],
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=True
-            )
-            generated_texts.append(text)
-        
-        return generated_texts if len(generated_texts) > 1 else generated_texts[0]
-
-    def generate(self, prompts: Union[str, List[str]], config: GenerationConfig) -> Union[str, List[str]]:
-        if isinstance(prompts, str):
-            prompts = [prompts]
-        
-        generated_texts = []
-        for prompt in prompts:
-            input_ids = self.tokenizer.encode(
-            prompt,
-            return_tensors='pt',
-            truncation=True,           
-            max_length=config.max_length,
-            add_special_tokens=False   
-            ).to(self.device)
-            generated = input_ids.clone()
+            if finished_beams:
+                best_seq, _ = max(finished_beams, key=lambda x: x[1])
+                text = self.tokenizer.decode(
+                    best_seq[0],
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=True
+                )
+            else:
+                # Fallback if no beams were completed
+                text = self.tokenizer.decode(
+                    input_ids[0],
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=True
+                )
             
-            # Early stopping variables
-            current_length = generated.size(1)
-            eos_reached = False
-            
-            while current_length < config.max_length and not eos_reached:
-                # Create causal mask for current sequence
-                casual_mask = self._create_causal_mask(generated.size(0), current_length)
-                
-                # Model forward pass with MTP
-                outputs = self.model(generated, attention_mask=casual_mask)
-                
-                # Use the main model output for next token prediction
-                logits = outputs[:, -1, :] / config.temperature
-                
-                # Apply repetition penalty
-                for i in range(logits.size(0)):
-                    for previous_token in generated[i].unique():
-                        logits[i, previous_token] /= config.repetition_penalty
-
-                # Top-k and top-p filtering
-                if config.top_k != 0:
-                    logits = self._top_k(logits, config.top_k)
-                if config.top_p != 1.0:
-                    logits = self._top_p(logits, config.top_p)
-
-                # Sample next token
-                probs = F.softmax(logits, dim=-1)
-                next_token = torch.multinomial(probs, num_samples=1)
-
-                # Check for EOS token
-                if next_token.item() == config.eos_token_id:
-                    eos_reached = True
-                
-                # Append token to sequence
-                generated = torch.cat([generated, next_token], dim=-1)
-                current_length += 1
-
-            # Convert to text and clean up special tokens
-            text = self.tokenizer.decode(
-                generated[0], 
-                skip_special_tokens=True, 
-                clean_up_tokenization_spaces=True
-            )
             generated_texts.append(text)
         
         return generated_texts if len(generated_texts) > 1 else generated_texts[0]
     
     def _top_k(self, logits, top_k):
         """Filter logits to the top k values."""
-        min_logits = torch.topk(logits, top_k)[0][:, -1, None]
-        logits[logits < min_logits] = -float('inf')
-        return logits
+        values, _ = torch.topk(logits, top_k)
+        min_values = values[:, -1].unsqueeze(-1).expand_as(logits)
+        return torch.where(logits < min_values, torch.full_like(logits, -float('inf')), logits)
     
     def _top_p(self, logits, top_p):
         """Filter logits to retain only the top-p cumulative probability."""
         sorted_logits, sorted_indices = torch.sort(logits, descending=True)
         cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+        
+        # Remove tokens with cumulative probability above the threshold
         sorted_indices_to_remove = cumulative_probs > top_p
+        # Shift the indices to the right to keep also the first token above the threshold
         sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-        sorted_indices_to_remove[..., 0] = False
+        sorted_indices_to_remove[..., 0] = 0
+        
+        # Scatter sorted tensors to original indexing
         indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-        logits[indices_to_remove] = -float('inf')
-        return logits
+        filtered_logits = logits.clone()
+        filtered_logits[indices_to_remove] = -float('inf')
+        return filtered_logits
 
 def load_model_and_tokenizer(model_path: str, model_config: dict) -> tuple:
     """Load model and tokenizer with proper error handling."""
@@ -238,7 +241,7 @@ def main():
         set_seed(base_config["seed"])    
         model_config = load_config('config/model.yaml')        
         model, tokenizer = load_model_and_tokenizer(
-            model_path="checkpoints/checkpoint_epoch_99.pt",
+            model_path="checkpoints/checkpoint_epoch_0.pt",
             model_config=model_config
         )
         # Define prompts
@@ -249,10 +252,10 @@ def main():
         generator = TextGenerator(model, tokenizer)   
         gen_config = GenerationConfig(
             max_length=50,
-            temperature=2.0,
+            temperature=0.8 ,
             top_k=50,
-            top_p=0.95,
-            repetition_penalty=2.0,
+            top_p=0.92,
+            repetition_penalty=1.5,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.pad_token_id
         )

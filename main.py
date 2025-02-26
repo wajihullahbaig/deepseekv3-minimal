@@ -28,7 +28,7 @@ def wikipedia_main():
         min_length = model_config["min_seq_len"],
         max_length=model_config['max_seq_len'],
         stride=model_config['stride'],
-        use_augmentations = config["use_augmentations"],
+        use_augmentations = train_config["use_augmentations"],
         device='cpu'
         )
     config["pad_token_id"] = tokenizer.pad_token_id
@@ -70,5 +70,5 @@ def youtube_comments_main():
     
     train(model, train_loader,test_loader, val_loader, {**config, **train_config})
 if __name__ == "__main__":
-    #wikipedia_main()
-    youtube_comments_main()
+    wikipedia_main()
+    #youtube_comments_main()

@@ -8,7 +8,7 @@ kv_compression_dim: 64
 query_compression_dim: 64 
 num_experts: 2
 activated_experts: 2
-vocab_size : 50258
+vocab_size : 50258 # Wont be necessary here. Since we may use different tokenizers in during data preparation
 min_seq_len: 5
 max_seq_len: 64 
 stride: 8

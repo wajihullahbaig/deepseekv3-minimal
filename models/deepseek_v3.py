@@ -49,44 +49,53 @@ class MultiHeadLatentAttention(nn.Module):
         self.rope = RotaryPositionalEmbedding(rope_dim)
         self.output_proj = nn.Linear(num_heads * head_dim, hidden_dim)
 
-        # Initialize weights with balanced variance
-        self._initialize_weights(hidden_dim)
-
-    def _initialize_weights(self, hidden_dim: int):
-        std = 0.02 / math.sqrt(hidden_dim)
-        for layer in [self.kv_down, self.key_up, self.value_up, self.key_rope,
-                      self.query_down, self.query_up, self.query_rope, self.output_proj]:
-            nn.init.normal_(layer.weight, mean=0.0, std=std)
-            if layer.bias is not None:
-                nn.init.zeros_(layer.bias)
 
     def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         batch_size, seq_len, _ = x.shape
 
         # Compress and project keys/values
         kv_compressed = self.kv_down(x)
-        keys_c = self.key_up(kv_compressed).view(batch_size, seq_len, self.num_heads, self.head_dim)
-        values = self.value_up(kv_compressed).view(batch_size, seq_len, self.num_heads, self.head_dim)
-        keys_r = self.key_rope(kv_compressed).view(batch_size, seq_len, self.num_heads, self.rope_dim)
+        keys_c = self.key_up(kv_compressed).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        values = self.value_up(kv_compressed).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        keys_r = self.key_rope(kv_compressed).view(batch_size, seq_len, self.num_heads, self.rope_dim).transpose(1, 2)
         keys_r = self.rope(keys_r)
-        keys = torch.cat([keys_c, keys_r], dim=-1)
-
+        
         # Compress and project queries
         query_compressed = self.query_down(x)
-        queries_c = self.query_up(query_compressed).view(batch_size, seq_len, self.num_heads, self.head_dim)
-        queries_r = self.query_rope(query_compressed).view(batch_size, seq_len, self.num_heads, self.rope_dim)
+        queries_c = self.query_up(query_compressed).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        queries_r = self.query_rope(query_compressed).view(batch_size, seq_len, self.num_heads, self.rope_dim).transpose(1, 2)
         queries_r = self.rope(queries_r)
+        
+        # Concatenate rotary and non-rotary parts
         queries = torch.cat([queries_c, queries_r], dim=-1)
+        keys = torch.cat([keys_c, keys_r], dim=-1)
 
-        # Compute attention scores
-        attn_scores = torch.einsum("bqhd,bkhd->bhqk", queries, keys) / math.sqrt(self.head_dim + self.rope_dim)
-        if attention_mask is not None:
+        # Compute attention scores - shape: [batch_size, num_heads, seq_len, seq_len]
+        attn_scores = torch.matmul(queries, keys.transpose(-1, -2)) / math.sqrt(self.head_dim + self.rope_dim)
+        
+        # Apply causal mask if no attention mask provided (autoregressive behavior)
+        if attention_mask is None:
+            causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device), diagonal=1).bool()
+            causal_mask = causal_mask.unsqueeze(0).unsqueeze(1)  # [1, 1, seq_len, seq_len]
+            attn_scores = attn_scores.masked_fill(causal_mask, float("-1e9"))
+        else:
+            # Process provided attention mask
+            if attention_mask.dim() == 2:
+                # Convert from [batch_size, seq_len] to [batch_size, 1, 1, seq_len]
+                attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+            # Expand if needed to match attention score dims
+            if attention_mask.shape[-1] != seq_len:
+                attention_mask = attention_mask.expand(-1, -1, -1, seq_len)
             attn_scores = attn_scores.masked_fill(attention_mask == 0, float("-1e9"))
+        
+        # Apply softmax to get attention probabilities
         attn_probs = F.softmax(attn_scores, dim=-1)
-
+        
         # Apply attention to values
-        context = torch.einsum("bhqk,bkhd->bqhd", attn_probs, values)
-        return self.output_proj(context.reshape(batch_size, seq_len, -1))
+        context = torch.matmul(attn_probs, values)  # [batch_size, num_heads, seq_len, head_dim]
+        context = context.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
+        
+        return self.output_proj(context)
 
 class ExpertFFN(nn.Module):
     """Single Feed-Forward Network (FFN) for MoE experts."""
@@ -96,14 +105,6 @@ class ExpertFFN(nn.Module):
         self.up = nn.Linear(hidden_dim, intermediate_dim)
         self.gelu = nn.GELU()
         self.down = nn.Linear(intermediate_dim, hidden_dim)
-        self._initialize_weights(hidden_dim)
-
-    def _initialize_weights(self, hidden_dim: int):
-        std = 0.02 / math.sqrt(hidden_dim)
-        nn.init.normal_(self.up.weight, mean=0.0, std=std)
-        nn.init.normal_(self.down.weight, mean=0.0, std=std)
-        nn.init.zeros_(self.up.bias)
-        nn.init.zeros_(self.down.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.down(self.gelu(self.up(x)))
@@ -132,69 +133,60 @@ class DeepSeekMoE(nn.Module):
         # Compute gating scores with bias for routing
         scores = F.sigmoid(self.gate(x_flat) + self.bias)  # [bs * seq_len, num_experts]
         top_scores, top_indices = scores.topk(self.top_k, dim=-1)  # [bs * seq_len, top_k]
-        top_scores = top_scores / (top_scores.sum(dim=-1, keepdim=True) + 1e-6)  # Normalize gating
-
-        # Update load balancing bias
+        
+        # Normalize top scores for weighting
+        top_scores = top_scores / (top_scores.sum(dim=-1, keepdim=True) + 1e-6)
+        
+        # Update load balancing bias (keep your original implementation)
         mask = F.one_hot(top_indices, self.num_experts).sum(dim=1).float()  # [bs * seq_len, num_experts]
         expert_load = mask.sum(dim=0)  # [num_experts]
         self.bias.data += self.bias_update_speed * (expert_load - self.expert_load)
         self.expert_load.lerp_(expert_load, 0.1)  # Exponential moving average
 
-        # Compute expert outputs
+        # Apply experts with proper weighting
         combined = torch.zeros_like(x_flat)
-        for expert_idx, expert in enumerate(self.experts):
-            selected = (top_indices == expert_idx).any(dim=-1)
-            if not selected.any():
-                continue
-            indices = torch.where(selected)[0]
-            expert_in = x_flat[indices]
-            expert_out = expert(expert_in) * 0.1  # Scale to prevent explosion
-            weights = top_scores[indices, (top_indices[indices] == expert_idx).nonzero(as_tuple=True)[1]]
-            combined.index_add_(0, indices, expert_out * weights.unsqueeze(-1))
+        for i in range(self.top_k):
+            expert_indices = top_indices[:, i]  # [batch_size * seq_len]
+            coefficient = top_scores[:, i].unsqueeze(-1)  # [batch_size * seq_len, 1]
+            
+            # Process inputs for each expert
+            for expert_idx, expert in enumerate(self.experts):
+                # Find inputs that should go to this expert
+                mask = (expert_indices == expert_idx)
+                if mask.any():
+                    # Get inputs for this expert
+                    expert_inputs = x_flat[mask]
+                    # Process inputs and apply coefficient
+                    expert_outputs = expert(expert_inputs) * coefficient[mask]
+                    # Add outputs to the combined tensor
+                    combined.index_add_(0, torch.where(mask)[0], expert_outputs)
 
         # Add shared expert output
-        shared_out = self.shared_expert(x) * 0.1  # Scale shared output
-        moe_out = shared_out + combined.view_as(x)
-
-        # Normalize per sequence to prevent extreme values
-        moe_out = moe_out / (moe_out.abs().max(dim=-1, keepdim=True)[0] + 1e-6)
-        return moe_out
+        shared_out = self.shared_expert(x_flat) * 0.1  # Scale shared output
+        combined = combined + shared_out
+        
+        # Reshape back to original dimensions
+        return combined.view(batch_size, seq_len, hidden_dim)
 
 class MultiTokenPrediction(nn.Module):
-    """Predicts multiple future tokens to enhance training efficiency."""
     def __init__(self, hidden_dim: int, vocab_size: int, depth: int = 1):
         super().__init__()
         self.depth = depth
-        self.proj_layers = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(hidden_dim + 1, hidden_dim * 2),
-                nn.GELU(),
-                nn.Linear(hidden_dim * 2, hidden_dim)
-            ) for _ in range(depth)
-        ])
+        self.proj_layers = nn.ModuleList([nn.Linear(hidden_dim, hidden_dim) for _ in range(depth)])
         self.norm = nn.LayerNorm(hidden_dim)
         self.output_head = nn.Linear(hidden_dim, vocab_size)
-        self._initialize_weights(hidden_dim)
-
-    def _initialize_weights(self, hidden_dim: int):
-        std = 0.02 / math.sqrt(hidden_dim)
-        for layer in self.proj_layers:
-            nn.init.normal_(layer[0].weight, mean=0.0, std=std)
-            nn.init.normal_(layer[2].weight, mean=0.0, std=std)
-            nn.init.zeros_(layer[0].bias)
-            nn.init.zeros_(layer[2].bias)
-        nn.init.normal_(self.output_head.weight, mean=0.0, std=std)
-
-    def forward(self, hidden_states: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         predictions = []
-        seq_len = hidden_states.size(1)
+        current_hidden = hidden_states
+        
         for d in range(self.depth):
-            target_slice = targets[:, d * seq_len:(d + 1) * seq_len].unsqueeze(-1)
-            combined = torch.cat([hidden_states, target_slice], dim=-1)
-            projected = self.proj_layers[d](combined)
+            # Project the hidden states to get predictions for next tokens
+            projected = self.proj_layers[d](current_hidden)
             normalized = self.norm(projected)
             predictions.append(normalized)
-            hidden_states = projected
+            current_hidden = projected
+            
         return torch.stack(predictions, dim=1)
 
 class DeepSeekV3(nn.Module):
@@ -225,22 +217,10 @@ class DeepSeekV3(nn.Module):
         self.final_norm = nn.LayerNorm(config["hidden_dim"])
         self.output_head = nn.Linear(config["hidden_dim"], config["vocab_size"])
         self.mtp = MultiTokenPrediction(config["hidden_dim"], config["vocab_size"], depth=1)
-        self._initialize_weights()
 
-    def _initialize_weights(self):
-        std = 0.02 / math.sqrt(self.config["hidden_dim"])
-        nn.init.normal_(self.embedding.weight, mean=0.0, std=std)
-        nn.init.normal_(self.output_head.weight, mean=0.0, std=std)
-        for layer in self.layers:
-            nn.init.normal_(layer["attn_norm"].weight, mean=1.0, std=0.02)
-            nn.init.normal_(layer["attn_norm"].bias, mean=0.0, std=0.02)
-            nn.init.normal_(layer["moe_norm"].weight, mean=1.0, std=0.02)
-            nn.init.normal_(layer["moe_norm"].bias, mean=0.0, std=0.02)
-        nn.init.normal_(self.final_norm.weight, mean=1.0, std=0.02)
-        nn.init.normal_(self.final_norm.bias, mean=0.0, std=0.02)
 
     def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None,
-                target_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+            target_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         x = self.embedding(input_ids)
 
         for layer in self.layers:
@@ -259,8 +239,8 @@ class DeepSeekV3(nn.Module):
         logits = self.output_head(x)
         logits = logits - logits.mean(dim=-1, keepdim=True)  # Ensure balanced logits
 
-        if target_ids is not None:
-            mtp_output = self.mtp(x, target_ids)
+        if self.training and target_ids is not None:
+            # During training, use the MTP module to predict future tokens
+            mtp_output = self.mtp(x)
             return logits, mtp_output
         return logits
-
