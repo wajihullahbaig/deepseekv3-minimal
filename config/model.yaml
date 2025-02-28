@@ -4,10 +4,11 @@ hidden_dim: 128
 num_heads: 8
 head_dim: 128
 rope_dim: 128
-kv_compression_dim: 64 
-query_compression_dim: 64 
+kv_compression_dim: 32 
+query_compression_dim: 32 
 num_experts: 4 
 activated_experts: 2
+dropout_rate: 0.1
 vocab_size: 50258
 min_seq_len: 5
 max_seq_len: 64

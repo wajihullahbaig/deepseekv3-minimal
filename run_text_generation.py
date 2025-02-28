@@ -2,6 +2,16 @@
 import sys
 import os
 import io
+import time
+import yaml
+import torch
+import argparse
+import logging
+import json
+from transformers import T5Tokenizer
+from models.deepseek_v3 import DeepSeekV3
+from text_generation import TextGenerator, GenerationConfig
+from seeding import set_seed
 
 # Fix for Windows console encoding issues
 if sys.platform == 'win32':
@@ -11,17 +21,6 @@ if sys.platform == 'win32':
     # Use utf-8 encoding for stdout
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-
-import yaml
-import torch
-import argparse
-import logging
-import os
-import pickle
-from transformers import T5Tokenizer
-from models.deepseek_v3 import DeepSeekV3
-from text_generation import TextGenerator, GenerationConfig
-from seeding import set_seed
 
 # Configure logging with safe encoding
 logging.basicConfig(
@@ -68,106 +67,161 @@ def load_model_with_correct_vocab(model_path, device='cuda'):
         model.load_state_dict(checkpoint)
     
     model = model.to(device)
+    model.eval()  # Set model to evaluation mode
     
     # Initialize tokenizer - make sure it matches the vocab size if possible
     tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
     
     return model, tokenizer
 
-def test_model_generation(model_path, device='cuda'):
-    """Test model generation with different strategies."""
-    # Load model and tokenizer with correct vocabulary handling
+def run_generation_comparison(model_path, device='cuda', prompt=None):
+    """
+    Run a side-by-side comparison of all generation methods on a single prompt.
+    
+    Args:
+        model_path: Path to the model checkpoint
+        device: Device to run generation on
+        prompt: Custom prompt to use (if None, a default will be used)
+    """
+    # Load model and tokenizer
     model, tokenizer = load_model_with_correct_vocab(model_path, device)
     generator = TextGenerator(model, tokenizer, device)
     
-    os.makedirs('logs', exist_ok=True)
+    # Use provided prompt or default
+    if prompt is None:
+        prompt = "The future of artificial intelligence depends on how we"
     
-    prompts = [
-        "The artificial intelligence revolution is changing how we",
-        "Climate change has become one of the most pressing issues because",
-        "The future of renewable energy depends on",
-        "The number of people living in cities has",
-        "Learning a new language requires",
-        "The solution to the equation x squared plus 7x plus 12 equals 0 is"
-    ]
+    logger.info(f"Running generation comparison for prompt: {prompt}")
     
-    # Hold all results for comparison
-    all_results = {}
-    
-    # Try different generation methods
-    for i, prompt in enumerate(prompts):
-        logger.info(f"\nPrompt {i+1}: {prompt}")
-        prompt_results = {}
-        
-        # Standard greedy generation (deterministic)
-        config = GenerationConfig(
-            max_length=100, 
-            temperature=1.0,
+    # Define configurations for different generation methods
+    configs = {
+        "Greedy": GenerationConfig(
+            max_length=150,
             do_sample=False,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.pad_token_id
-        )
-        
-        try:
-            result = generator.generate(prompt, config)
-            # Handle potential Unicode issues in output
-            safe_result = result.encode('ascii', 'ignore').decode('utf-8')
-            logger.info(f"\nGreedy decoding:\n{safe_result}")
-            prompt_results['greedy'] = safe_result
-        except Exception as e:
-            logger.error(f"Greedy generation failed: {str(e)}")
-            prompt_results['greedy'] = f"Error: {str(e)}"
-        
-        # Standard sampling
-        config = GenerationConfig(
-            max_length=100, 
-            temperature=1.2,
+        ),
+        "Sampling (temp=0.8)": GenerationConfig(
+            max_length=150,
+            temperature=0.8,
             top_k=50,
             top_p=0.9,
             repetition_penalty=1.2,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.pad_token_id
+        ),
+        "Sampling (temp=1.2)": GenerationConfig(
+            max_length=150,
+            temperature=1.2,
+            top_k=50,
+            top_p=0.95,
+            repetition_penalty=1.2,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id
+        ),
+        "Beam Search (beams=4)": GenerationConfig(
+            max_length=150,
+            do_sample=False,
+            num_beams=4,
+            length_penalty=1.0,
+            early_stopping=True,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id
+        ),
+        "MTP Speculation": GenerationConfig(
+            max_length=150,
+            temperature=0.8,
+            top_k=50,
+            top_p=0.9,
+            repetition_penalty=1.2,
+            use_mtp=True,
+            mtp_speculation_mode=True,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id
         )
-        
+    }
+    
+    # Generate using each method and print side by side
+    results = {}
+    generation_times = {}
+    
+    for name, config in configs.items():
+        logger.info(f"Generating with {name}...")
         try:
+            start_time = time.time()
             result = generator.generate(prompt, config)
-            # Handle potential Unicode issues in output
-            safe_result = result.encode('ascii', 'ignore').decode('utf-8')
-            logger.info(f"\nStandard sampling:\n{safe_result}")
-            prompt_results['sampling'] = safe_result
+            end_time = time.time()
+            generation_time = end_time - start_time
+            
+            results[name] = result
+            generation_times[name] = generation_time
+            logger.info(f"{name} completed in {generation_time:.2f} seconds")
         except Exception as e:
-            logger.error(f"Sampling generation failed: {str(e)}")
-            prompt_results['sampling'] = f"Error: {str(e)}"
-        
-        all_results[prompt] = prompt_results
+            logger.error(f"{name} generation failed: {str(e)}")
+            results[name] = f"Error: {str(e)}"
+            generation_times[name] = None
     
-    # Save all results to file with safe encoding
-    import json
-    with open('logs/test_results.json', 'w', encoding='utf-8') as f:
-        # Convert results to strings for JSON serialization
-        serializable_results = {str(k): {str(k2): str(v2) for k2, v2 in v.items()} 
-                              for k, v in all_results.items()}
-        json.dump(serializable_results, f, indent=2, ensure_ascii=True)
+    # Print detailed comparison
+    logger.info("\n" + "="*80)
+    logger.info(f"PROMPT: {prompt}")
+    logger.info("="*80)
     
-    logger.info(f"Generation results saved to logs/test_results.json")
-    return all_results
+    for name, result in results.items():
+        if generation_times[name] is not None:
+            time_str = f"{generation_times[name]:.2f}s"
+        else:
+            time_str = "N/A"
+        logger.info(f"\n{name} (Time: {time_str}):")
+        logger.info("-"*80)
+        logger.info(result)
+        logger.info("-"*80)
+    
+    # Create directory for logs if it doesn't exist
+    os.makedirs('logs', exist_ok=True)
+    
+    # Save results to file in proper JSON format
+    comparison_data = {
+        "prompt": prompt,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "model_path": model_path,
+        "device": device,
+        "results": {}
+    }
+    
+    # Add each method's results and timing
+    for name, result in results.items():
+        comparison_data["results"][name] = {
+            "text": result,
+            "generation_time_seconds": generation_times[name] if generation_times[name] is not None else None,
+            "config": {k: str(v) for k, v in configs[name].__dict__.items() if not k.startswith('_')}
+        }
+    
+    # Write to JSON file with proper encoding
+    with open('logs/comparison.json', 'w', encoding='utf-8') as f:
+        json.dump(comparison_data, f, indent=2, ensure_ascii=False)
+    
+    logger.info(f"Comparison results saved to logs/comparison.json")
+    
+    return results, generation_times
 
 def main():
-    """Main function to parse arguments and run the test."""
-    parser = argparse.ArgumentParser(description='Test DeepSeek model text generation')
+    """Main function to parse arguments and run the comparison."""
+    parser = argparse.ArgumentParser(description='Compare different text generation methods')
     parser.add_argument('--model_path', type=str, required=True, 
                         help='Path to the model checkpoint')
     parser.add_argument('--device', type=str, default='cuda',
                         help='Device to run inference on (cuda or cpu)')
     parser.add_argument('--seed', type=int, default=42, 
                         help='Random seed for reproducibility')
+    parser.add_argument('--prompt', type=str, default=None,
+                        help='Custom prompt for generation')
     
     args = parser.parse_args()
     
     set_seed(args.seed)
     
     try:
-        test_model_generation(args.model_path, args.device)
+        run_generation_comparison(args.model_path, args.device, args.prompt)
     except Exception as e:
         logger.error(f"An error occurred during text generation: {str(e)}")
         import traceback

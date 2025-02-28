@@ -100,7 +100,7 @@ def collate_fn(batch):
 
 def create_wikipedia_loaders(tokenizer, batch_size=32, min_length=20, max_length=128, stride=64, device="cuda", num_workers=1, drop_last=True,use_augmentations=True):
     # Load the dataset
-    dataset = load_dataset("wikipedia", "20220301.simple", split="train[:1000]")
+    dataset = load_dataset("wikipedia", "20220301.simple", split="train[:5000]")
     
     # Preprocess and chunk the dataset
     token_chunks = preprocess_and_chunk_dataset(dataset, tokenizer, max_length, stride, min_length)

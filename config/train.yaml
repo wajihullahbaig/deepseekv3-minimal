@@ -2,10 +2,10 @@
 batch_size: 24
 learning_rate: 0.0002345
 num_epochs: 100
-gradient_clip: 1.0
-warmup_steps: 500
-use_augmentations: True
-gradient_accumulation_steps: 4  # Add this for more stable updates
-patience: 3  # Add early stopping patience
-eval_steps: 500  # Evaluate every 200 steps
-mtp_weight: 0.25  # Weight for MTP loss component
+gradient_clip: 2.0
+warmup_steps: 1000
+use_augmentations: False
+gradient_accumulation_steps: 4  
+patience: 7  # Add early stopping patience
+eval_steps: 500  
+mtp_weight: 0.4  # Weight for MTP loss component
