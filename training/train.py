@@ -89,7 +89,6 @@ def train(model, train_loader, test_loader, val_loader, config):
     """
     logger.info("Starting training with configuration: %s", config)
     
-    # Move model to the specified device
     device = config['device']
     model.to(device)
     
@@ -131,11 +130,9 @@ def train(model, train_loader, test_loader, val_loader, config):
         label_smoothing=0.1  # Add label smoothing for better generalization
     )
     
-    # Create directories for checkpoints and logs if they don't exist
     os.makedirs('checkpoints', exist_ok=True)
     os.makedirs('logs', exist_ok=True)
     
-    # Track metrics
     train_losses = []
     train_accuracies = []
     val_losses = []
@@ -148,10 +145,8 @@ def train(model, train_loader, test_loader, val_loader, config):
     patience = config.get('patience', 3)
     patience_counter = 0
     
-    # Record start time
     start_time = time.time()
     
-    # Main training loop
     for epoch in range(config['num_epochs']):
         model.train()
         epoch_train_loss = 0.0
@@ -213,7 +208,7 @@ def train(model, train_loader, test_loader, val_loader, config):
                 
                 # Combine losses with weighting
                 mtp_weight = config.get('mtp_weight', 0.5)
-                total_loss = main_loss + mtp_weight * mtp_loss
+                total_loss = (1.0-mtp_weight) * main_loss + mtp_weight * mtp_loss
                 
                 # Compute main accuracy
                 main_accuracy = compute_accuracy(logits, target_ids, config.get('pad_token_id', -100))
