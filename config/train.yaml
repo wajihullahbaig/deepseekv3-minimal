@@ -1,11 +1,11 @@
 # Training configuration
 batch_size: 24
-learning_rate: 0.0000375
+learning_rate: 0.0002345
 num_epochs: 100
 gradient_clip: 1.0
 warmup_steps: 500
 use_augmentations: True
 gradient_accumulation_steps: 4  # Add this for more stable updates
 patience: 3  # Add early stopping patience
-eval_steps: 200  # Evaluate every 200 steps
-mtp_weight: 0.5  # Weight for MTP loss component
+eval_steps: 500  # Evaluate every 200 steps
+mtp_weight: 0.25  # Weight for MTP loss component
