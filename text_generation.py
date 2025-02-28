@@ -17,7 +17,7 @@ class GenerationConfig:
     def __init__(
         self,
         max_length: int = 128,
-        temperature: float = 1.0,
+        temperature: float = 1.2,
         top_k: int = 50,
         top_p: float = 0.9,
         repetition_penalty: float = 1.2,
@@ -28,7 +28,7 @@ class GenerationConfig:
         use_mtp: bool = True,
         mtp_speculation_mode: bool = True,
         num_beams: int = 1,
-        length_penalty: float = 1.0,
+        length_penalty: float = 1.5,
         early_stopping: bool = False,
     ):
         """

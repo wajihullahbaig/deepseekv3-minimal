@@ -121,7 +121,7 @@ def test_model_generation(model_path, device='cuda'):
         # Standard sampling
         config = GenerationConfig(
             max_length=100, 
-            temperature=0.7,
+            temperature=1.2,
             top_k=50,
             top_p=0.9,
             repetition_penalty=1.2,
