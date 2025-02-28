@@ -26,3 +26,4 @@ plots_*/
 corpus/
 checkpoints/
 .vscode/
+logs/

@@ -51,6 +51,16 @@ class MultiHeadLatentAttention(nn.Module):
 
 
     def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Forward pass of Multi-head Latent Attention.
+        
+        Args:
+            x: Input tensor [batch_size, seq_len, hidden_dim]
+            attention_mask: Optional attention mask [batch_size, seq_len] or [batch_size, 1, seq_len, seq_len]
+            
+        Returns:
+            Output tensor after attention [batch_size, seq_len, hidden_dim]
+        """
         batch_size, seq_len, _ = x.shape
 
         # Compress and project keys/values
@@ -73,20 +83,36 @@ class MultiHeadLatentAttention(nn.Module):
         # Compute attention scores - shape: [batch_size, num_heads, seq_len, seq_len]
         attn_scores = torch.matmul(queries, keys.transpose(-1, -2)) / math.sqrt(self.head_dim + self.rope_dim)
         
-        # Apply causal mask if no attention mask provided (autoregressive behavior)
-        if attention_mask is None:
-            causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device), diagonal=1).bool()
-            causal_mask = causal_mask.unsqueeze(0).unsqueeze(1)  # [1, 1, seq_len, seq_len]
-            attn_scores = attn_scores.masked_fill(causal_mask, float("-1e9"))
-        else:
-            # Process provided attention mask
+        # Create causal mask
+        causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool), diagonal=1)
+        causal_mask = causal_mask.unsqueeze(0).unsqueeze(1)  # [1, 1, seq_len, seq_len]
+        
+        # Process attention mask if provided
+        if attention_mask is not None:
+            # Convert from [batch_size, seq_len] to 4D if needed
             if attention_mask.dim() == 2:
-                # Convert from [batch_size, seq_len] to [batch_size, 1, 1, seq_len]
+                # Convert to boolean mask first (1 -> True, 0 -> False)
+                attention_mask = attention_mask.bool()
+                # Then expand to 4D: [batch_size, 1, 1, seq_len]
                 attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-            # Expand if needed to match attention score dims
-            if attention_mask.shape[-1] != seq_len:
-                attention_mask = attention_mask.expand(-1, -1, -1, seq_len)
-            attn_scores = attn_scores.masked_fill(attention_mask == 0, float("-1e9"))
+                # Expand if needed to match attention score dims
+                attention_mask = attention_mask.expand(-1, -1, seq_len, -1)
+                
+                # Invert the mask - we want True where tokens should be ignored
+                attention_mask = ~attention_mask
+            elif attention_mask.dim() == 4:
+                # If already 4D, just ensure it's boolean
+                attention_mask = attention_mask.bool()
+            
+            # Combine with causal mask - we want to apply both masks
+            # (True wherever we want to mask out)
+            combined_mask = causal_mask | attention_mask
+        else:
+            # Just use causal mask
+            combined_mask = causal_mask
+        
+        # Apply mask - set masked positions to negative infinity
+        attn_scores = attn_scores.masked_fill(combined_mask, float("-1e9"))
         
         # Apply softmax to get attention probabilities
         attn_probs = F.softmax(attn_scores, dim=-1)
@@ -181,10 +207,12 @@ class MultiTokenPrediction(nn.Module):
         current_hidden = hidden_states
         
         for d in range(self.depth):
-            # Project the hidden states to get predictions for next tokens
+            # Project the hidden states
             projected = self.proj_layers[d](current_hidden)
             normalized = self.norm(projected)
-            predictions.append(normalized)
+            # Apply output head directly here
+            logits = self.output_head(normalized)
+            predictions.append(logits)
             current_hidden = projected
             
         return torch.stack(predictions, dim=1)
@@ -218,29 +246,35 @@ class DeepSeekV3(nn.Module):
         self.output_head = nn.Linear(config["hidden_dim"], config["vocab_size"])
         self.mtp = MultiTokenPrediction(config["hidden_dim"], config["vocab_size"], depth=1)
 
-
     def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None,
-            target_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+                target_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+        # Embedding layer
         x = self.embedding(input_ids)
-
+        
+        # Process through transformer layers
         for layer in self.layers:
             # Attention block
             attn_input = layer["attn_norm"](x)
-            attn_input = attn_input - attn_input.mean(dim=-1, keepdim=True) + 1.0  # Center and shift
+            # Center and shift normalization
+            attn_input = attn_input - attn_input.mean(dim=-1, keepdim=True) + 1.0
             attn_output = layer["attention"](attn_input, attention_mask)
             x = x + attn_output
-
+            
             # MoE block
             moe_input = layer["moe_norm"](x)
             moe_output = layer["moe"](moe_input)
             x = x + moe_output
-
+        
+        # Final normalization
         x = self.final_norm(x)
+        
+        # Main logits from final hidden state
         logits = self.output_head(x)
-        logits = logits - logits.mean(dim=-1, keepdim=True)  # Ensure balanced logits
-
-        if self.training and target_ids is not None:
-            # During training, use the MTP module to predict future tokens
-            mtp_output = self.mtp(x)
-            return logits, mtp_output
+        
+        # During training or when explicitly requested, also compute MTP predictions
+        if (self.training and target_ids is not None) or not self.training:
+            # Get multi-token predictions
+            mtp_outputs = self.mtp(x)
+            return logits, mtp_outputs
+        
         return logits
