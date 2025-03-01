@@ -89,21 +89,18 @@ def run_generation_comparison(model_path, device='cuda', prompt=None):
     
     # # Use provided prompt or default
     # if prompt is None:
-    #     prompts = [
-    #     "The artificial intelligence revolution is changing how we",
-    #     "Climate change has become one of the most pressing issues because",
-    #     "The future of renewable energy depends on",
-    #     "The number of people living in cities has",
-    #     "Learning a new language requires",
-    #     "The solution to the equation x squared plus 7x plus 12 equals 0 is"
-    # ]
+    #   prompt = "The future of artificial intelligence is"
     prompts = [
         "The artificial intelligence revolution is changing how we",
         "Climate change has become one of the most pressing issues because",
         "The future of renewable energy depends on",
         "The number of people living in cities has",
         "Learning a new language requires",
-        "The solution to the equation x squared plus 7x plus 12 equals 0 is"
+        "The solution to the equation x squared plus 7x plus 12 equals 0 is",
+        "Atom is composed of electron, proton and a ",
+        "Tokyo is the most populated city of ",
+        "For every human being, Peace is the most basic",
+        "For human life to sustain itself, we must realize that water is the most"
     ]    
     
     for c,prompt in enumerate(prompts):
@@ -112,22 +109,22 @@ def run_generation_comparison(model_path, device='cuda', prompt=None):
         # Define configurations for different generation methods
         configs = {
             "Greedy": GenerationConfig(
-                max_length=150,
+                max_length=50,
                 do_sample=False,
                 eos_token_id=tokenizer.eos_token_id,
                 pad_token_id=tokenizer.pad_token_id
             ),
             "Sampling (temp=0.8)": GenerationConfig(
-                max_length=150,
+                max_length=50,
                 temperature=0.8,
                 top_k=50,
-                top_p=0.9,
+                top_p=0.95,
                 repetition_penalty=1.2,
                 eos_token_id=tokenizer.eos_token_id,
                 pad_token_id=tokenizer.pad_token_id
             ),
             "Sampling (temp=1.2)": GenerationConfig(
-                max_length=150,
+                max_length=50,
                 temperature=1.2,
                 top_k=50,
                 top_p=0.95,
@@ -136,7 +133,7 @@ def run_generation_comparison(model_path, device='cuda', prompt=None):
                 pad_token_id=tokenizer.pad_token_id
             ),
             "Beam Search (beams=4)": GenerationConfig(
-                max_length=150,
+                max_length=50,
                 do_sample=False,
                 num_beams=4,
                 length_penalty=1.0,
@@ -145,10 +142,10 @@ def run_generation_comparison(model_path, device='cuda', prompt=None):
                 pad_token_id=tokenizer.pad_token_id
             ),
             "MTP Speculation": GenerationConfig(
-                max_length=150,
-                temperature=0.8,
+                max_length=50,
+                temperature=1.2,
                 top_k=50,
-                top_p=0.9,
+                top_p=0.95,
                 repetition_penalty=1.2,
                 use_mtp=True,
                 mtp_speculation_mode=True,

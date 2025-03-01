@@ -7,5 +7,5 @@ warmup_steps: 1000
 use_augmentations: False
 gradient_accumulation_steps: 4  
 patience: 7  # Add early stopping patience
-eval_steps: 500  
-mtp_weight: 0.4  # Weight for MTP loss component
+eval_steps: 1500  
+mtp_weight: 0.3  # Weight for MTP loss component

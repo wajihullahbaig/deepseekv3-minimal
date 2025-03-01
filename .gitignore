@@ -24,6 +24,6 @@ outputs/
 plots/
 plots_*/
 corpus/
-checkpoints/
+checkpoints*/
 .vscode/
 logs/
