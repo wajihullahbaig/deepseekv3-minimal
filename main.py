@@ -6,7 +6,7 @@ from seeding import set_seed
 from trainable_params import print_trainable_parameters
 from transformers import T5Tokenizer
 
-from training import train
+from training import trainer
 
 def load_config(config_file):
     with open(config_file, 'r') as f:
@@ -39,7 +39,7 @@ def wikipedia_main():
     print_trainable_parameters(model, unit="M")
     model.to(config['device'])
     
-    train(model, train_loader, test_loader,val_loader, {**config, **train_config})
+    trainer.train(model, train_loader, test_loader,val_loader, {**config, **train_config})
 
 def youtube_comments_main():
     config = load_config('config/base.yaml')
@@ -69,7 +69,7 @@ def youtube_comments_main():
     print_trainable_parameters(model, unit="M")
     model.to(config['device'])
     
-    train(model, train_loader,test_loader, val_loader, {**config, **train_config})
+    trainer(model, train_loader,test_loader, val_loader, {**config, **train_config})
 if __name__ == "__main__":
     wikipedia_main()
     #youtube_comments_main()
