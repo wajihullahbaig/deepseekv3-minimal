@@ -38,7 +38,7 @@ def load_config(config_path):
     with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 
-def load_model_with_correct_vocab(model_path, device='cuda'):
+def load_model_with_correct_vocab(model_path,model_yaml, device='cuda'):
     """Load the model with the correct vocabulary size from the checkpoint."""
     # Load the checkpoint to get embedding size
     checkpoint = torch.load(model_path, map_location='cpu')
@@ -53,7 +53,7 @@ def load_model_with_correct_vocab(model_path, device='cuda'):
     vocab_size = state_dict['embedding.weight'].shape[0]
     logger.info(f"Checkpoint vocabulary size: {vocab_size}")
     
-    model_config = load_config('config/model.yaml')
+    model_config = load_config(model_yaml)
     
     # Set vocab size to match checkpoint
     model_config['vocab_size'] = vocab_size
@@ -74,7 +74,7 @@ def load_model_with_correct_vocab(model_path, device='cuda'):
     
     return model, tokenizer
 
-def run_generation_comparison(model_path, device='cuda', prompt=None):
+def run_generation_comparison(model_path,model_yaml, device='cuda', prompt=None):
     """
     Run a side-by-side comparison of all generation methods on a single prompt.
     
@@ -84,7 +84,7 @@ def run_generation_comparison(model_path, device='cuda', prompt=None):
         prompt: Custom prompt to use (if None, a default will be used)
     """
     # Load model and tokenizer
-    model, tokenizer = load_model_with_correct_vocab(model_path, device)
+    model, tokenizer = load_model_with_correct_vocab(model_path,model_yaml, device)
     generator = TextGenerator(model, tokenizer, device)
     
     # # Use provided prompt or default
@@ -115,7 +115,7 @@ def run_generation_comparison(model_path, device='cuda', prompt=None):
                 eos_token_id=tokenizer.eos_token_id,
                 pad_token_id=tokenizer.pad_token_id
             ),
-            "Sampling (temp=0.8)": GenerationConfig(
+            "Sampling (temp=0.7)": GenerationConfig(
                 max_length=50,
                 temperature=0.7,
                 top_k=50,
@@ -222,6 +222,8 @@ def main():
     parser = argparse.ArgumentParser(description='Compare different text generation methods')
     parser.add_argument('--model_path', type=str, required=True, 
                         help='Path to the model checkpoint')
+    parser.add_argument('--model_yaml', type=str, required=True, 
+                        help='Path to the model yaml')
     parser.add_argument('--device', type=str, default='cuda',
                         help='Device to run inference on (cuda or cpu)')
     parser.add_argument('--seed', type=int, default=42, 
@@ -234,7 +236,7 @@ def main():
     set_seed(args.seed)
     
     try:
-        run_generation_comparison(args.model_path, args.device, args.prompt)
+        run_generation_comparison(args.model_path, args.model_yaml, args.device, args.prompt)
     except Exception as e:
         logger.error(f"An error occurred during text generation: {str(e)}")
         import traceback

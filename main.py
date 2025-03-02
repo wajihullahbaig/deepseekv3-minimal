@@ -4,8 +4,9 @@ from data.youtube_dataloaders import create_yt_and_loaders
 from models.deepseek_v3 import DeepSeekV3
 from seeding import set_seed
 from trainable_params import print_trainable_parameters
-from training.train_adam import train
 from transformers import T5Tokenizer
+
+from training import train
 
 def load_config(config_file):
     with open(config_file, 'r') as f:
