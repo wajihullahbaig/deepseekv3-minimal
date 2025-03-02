@@ -31,7 +31,7 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("TEST RUNNER")
 
 def load_config(config_path):
     """Load configuration from YAML file."""
@@ -89,18 +89,19 @@ def run_generation_comparison(model_path, device='cuda', prompt=None):
     
     # # Use provided prompt or default
     # if prompt is None:
-    #   prompt = "The future of artificial intelligence is"
+    #   prompt = "Place your prompt here either for wikipedia or youtube style comments"
+
+    # Wiki
     prompts = [
-        "The artificial intelligence revolution is changing how we",
-        "Climate change has become one of the most pressing issues because",
-        "The future of renewable energy depends on",
-        "The number of people living in cities has",
-        "Learning a new language requires",
-        "The solution to the equation x squared plus 7x plus 12 equals 0 is",
-        "Atom is composed of electron, proton and a ",
-        "Tokyo is the most populated city of ",
-        "For every human being, Peace is the most basic",
-        "For human life to sustain itself, we must realize that water is the most"
+        "The future of AI is very ",
+        "Water is an essential element for ",
+        "Atom is made out of electrons, protons and "
+    ]    
+    # Youtube 
+    prompts = [
+        "extended arm towards it and points out the 27” screen size and suddenly you realize ",
+        "replacing silicon as semiconductors nearly every industry can benefit from the improvements and cost reductions ",
+        "managed to puncture my tyre the other day sealant didn’t do the trick nor did a couple of slugs"
     ]    
     
     for c,prompt in enumerate(prompts):
@@ -116,7 +117,7 @@ def run_generation_comparison(model_path, device='cuda', prompt=None):
             ),
             "Sampling (temp=0.8)": GenerationConfig(
                 max_length=50,
-                temperature=0.8,
+                temperature=0.7,
                 top_k=50,
                 top_p=0.95,
                 repetition_penalty=1.2,
