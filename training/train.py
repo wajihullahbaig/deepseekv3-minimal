@@ -1,5 +1,5 @@
 import torch
-from torch.optim import AdamW
+from torch.optim import SGD, AdamW
 from torch import nn
 import torch.nn.functional as F
 import numpy as np
@@ -9,6 +9,7 @@ import os
 import logging
 from training.checkpointing import save_checkpoint
 from visualization.metrics import plot_metrics
+from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts
 from transformers import get_linear_schedule_with_warmup
 
 # Configure logging
@@ -20,7 +21,7 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("TRAINER")
 
 def compute_accuracy(logits, target_ids, pad_token_id):
     """Compute token-level prediction accuracy."""
@@ -76,6 +77,70 @@ def validate(model, data_loader, criterion, pad_token_id, device):
     model.train()
     return avg_loss, avg_accuracy
 
+def get_optimizer(model, config):
+    """Create the optimizer based on configuration."""
+    no_decay = ['bias', 'LayerNorm.weight']
+    optimizer_grouped_params = [
+        {
+            'params': [p for n, p in model.named_parameters() 
+                      if not any(nd in n for nd in no_decay)],
+            'weight_decay': 0.01
+        },
+        {
+            'params': [p for n, p in model.named_parameters() 
+                      if any(nd in n for nd in no_decay)],
+            'weight_decay': 0.0
+        }
+    ]
+    
+    optimizer_type = config.get('optimizer', 'sgd').lower()
+    
+    if optimizer_type == 'sgd':
+        return SGD(
+            optimizer_grouped_params,
+            lr=config['learning_rate'],
+            momentum=config.get('momentum', 0.9),
+            nesterov=config.get('nesterov', True)
+        )
+    elif optimizer_type == 'adamw':
+        return AdamW(
+            optimizer_grouped_params,
+            lr=config['learning_rate'],
+            eps=1e-8
+        )
+    else:
+        raise ValueError(f"Unsupported optimizer: {optimizer_type}")
+
+def get_scheduler(optimizer, train_loader, config):
+    """Create the learning rate scheduler based on configuration."""
+    scheduler_type = config.get('scheduler', 'cosine').lower()
+    gradient_accumulation_steps = config.get('gradient_accumulation_steps', 1)
+    
+    if scheduler_type == 'cosine':
+        # Regular cosine annealing
+        return CosineAnnealingLR(
+            optimizer,
+            T_max=config['num_epochs'] * (len(train_loader) // gradient_accumulation_steps),
+            eta_min=config.get('min_lr', 1e-6)
+        )
+    elif scheduler_type == 'cosine_warmup':
+        # Cosine annealing with warm restarts
+        return CosineAnnealingWarmRestarts(
+            optimizer,
+            T_0=config.get('restart_epochs', 10) * (len(train_loader) // gradient_accumulation_steps),
+            T_mult=config.get('restart_mult', 2),
+            eta_min=config.get('min_lr', 1e-6)
+        )
+    elif scheduler_type == 'linear_warmup':
+        # Linear scheduler with warmup from transformers
+        return get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=config['warmup_steps'],
+            num_training_steps=config['num_epochs'] * (len(train_loader) // gradient_accumulation_steps)
+        )
+    else:
+        raise ValueError(f"Unsupported scheduler: {scheduler_type}")
+
 def train(model, train_loader, test_loader, val_loader, config):
     """
     Training loop with improved handling for MTP outputs and stability enhancements.
@@ -92,42 +157,16 @@ def train(model, train_loader, test_loader, val_loader, config):
     device = config['device']
     model.to(device)
     
-    # Set up optimizer with weight decay
-    no_decay = ['bias', 'LayerNorm.weight']
-    optimizer_grouped_params = [
-        {
-            'params': [p for n, p in model.named_parameters() 
-                      if not any(nd in n for nd in no_decay)],
-            'weight_decay': 0.01
-        },
-        {
-            'params': [p for n, p in model.named_parameters() 
-                      if any(nd in n for nd in no_decay)],
-            'weight_decay': 0.0
-        }
-    ]
+    # Set up optimizer with customized configuration
+    optimizer = get_optimizer(model, config)
     
-    optimizer = AdamW(
-        optimizer_grouped_params,
-        lr=config['learning_rate'],
-        eps=1e-8
-    )
-    
-    # Calculate total training steps for scheduler
-    gradient_accumulation_steps = config.get('gradient_accumulation_steps', 1)
-    total_steps = config['num_epochs'] * (len(train_loader) // gradient_accumulation_steps)
-    
-    # Create learning rate scheduler with warmup
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=config['warmup_steps'],
-        num_training_steps=total_steps
-    )
+    # Set up learning rate scheduler
+    scheduler = get_scheduler(optimizer, train_loader, config)
     
     # Set up loss function with label smoothing
     criterion = nn.CrossEntropyLoss(
         ignore_index=config.get('pad_token_id', -100),
-        label_smoothing=0.1  # Add label smoothing for better generalization
+        label_smoothing=config.get('label_smoothing', 0.1)
     )
     
     os.makedirs('checkpoints', exist_ok=True)
@@ -207,7 +246,7 @@ def train(model, train_loader, test_loader, val_loader, config):
                         mtp_loss /= depth
                 
                 # Combine losses with weighting
-                mtp_weight = config.get('mtp_weight', 0.5)
+                mtp_weight = config.get('mtp_weight', 0.3)
                 total_loss = (1.0-mtp_weight) * main_loss + mtp_weight * mtp_loss
                 
                 # Compute main accuracy
@@ -225,7 +264,6 @@ def train(model, train_loader, test_loader, val_loader, config):
                 logits = outputs
                 total_loss = criterion(logits.view(-1, logits.size(-1)), target_ids.view(-1))
                 
-                # Compute accuracy
                 main_accuracy = compute_accuracy(logits, target_ids, config.get('pad_token_id', -100))
                 epoch_train_accuracy += main_accuracy
                 
@@ -233,10 +271,10 @@ def train(model, train_loader, test_loader, val_loader, config):
                 batch_losses.append({'total_loss': total_loss.item()})
             
             # Scale loss if using gradient accumulation
+            gradient_accumulation_steps = config.get('gradient_accumulation_steps', 1)
             if gradient_accumulation_steps > 1:
                 total_loss = total_loss / gradient_accumulation_steps
             
-            # Backward pass
             total_loss.backward()
             accumulated_loss += total_loss.item() * gradient_accumulation_steps
             
@@ -250,14 +288,19 @@ def train(model, train_loader, test_loader, val_loader, config):
                 
                 # Update parameters
                 optimizer.step()
-                scheduler.step()  # Update learning rate
+                
+                # Update learning rate if using schedulers that step per batch
+                if not isinstance(scheduler, CosineAnnealingLR) and not isinstance(scheduler, CosineAnnealingWarmRestarts):
+                    scheduler.step()
+                
                 optimizer.zero_grad()  # Reset gradients
                 
-                # Update progress bar with loss
+                # Update progress bar with loss and learning rate
+                current_lr = scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else optimizer.param_groups[0]['lr']
                 progress_bar.set_postfix({
                     'loss': accumulated_loss / gradient_accumulation_steps,
                     'acc': main_accuracy,
-                    'lr': scheduler.get_last_lr()[0]
+                    'lr': current_lr
                 })
                 accumulated_loss = 0.0
             
@@ -297,6 +340,12 @@ def train(model, train_loader, test_loader, val_loader, config):
                         break
                 
                 model.train()
+        
+        # Update learning rate if using epoch-based schedulers
+        if isinstance(scheduler, (CosineAnnealingLR, CosineAnnealingWarmRestarts)):
+            scheduler.step()
+            current_lr = scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else optimizer.param_groups[0]['lr']
+            logger.info(f"Learning rate updated to: {current_lr:.6f}")
         
         avg_train_loss = epoch_train_loss / len(train_loader)
         avg_train_accuracy = epoch_train_accuracy / len(train_loader)
@@ -374,4 +423,3 @@ def train(model, train_loader, test_loader, val_loader, config):
         'val_accuracies': val_accuracies,
         'test_accuracies': test_accuracies
     }
-
