@@ -19,7 +19,7 @@ are not required. Therefore, to make things simple, this repo exists.
 ![Arch](deepseek_arch.png)
 
 
-## Training on Youtubr comments wikipedia
+## Training on Youtube comments dataset
 
 ![Losses](training_metrics_yt.png)
 
