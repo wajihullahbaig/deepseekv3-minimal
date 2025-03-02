@@ -19,10 +19,8 @@ htmlcov/
 
 # Documentation and plots
 *.pdf
-
+plots*/
 outputs/
-plots/
-plots_*/
 corpus/
 checkpoints*/
 .vscode/

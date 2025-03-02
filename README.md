@@ -21,7 +21,7 @@ are not required. Therefore, to make things simple, this repo exists.
 
 ## Training on 20220301.simple wikipedia
 
-![Losses](loss_plot.png)
+![Losses](training_metrics.png)
 
 
 ## Datasets

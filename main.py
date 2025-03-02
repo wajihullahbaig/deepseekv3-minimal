@@ -4,7 +4,7 @@ from data.youtube_dataloaders import create_yt_and_loaders
 from models.deepseek_v3 import DeepSeekV3
 from seeding import set_seed
 from trainable_params import print_trainable_parameters
-from training.train import train
+from training.train_adam import train
 from transformers import T5Tokenizer
 
 def load_config(config_file):
@@ -15,8 +15,8 @@ def load_config(config_file):
 def wikipedia_main():
     config = load_config('config/base.yaml')
     set_seed(config["seed"])    
-    train_config = load_config('config/train.yaml')
-    model_config = load_config('config/model.yaml')
+    train_config = load_config('config/train_wiki.yaml')
+    model_config = load_config('config/model_wiki.yaml')
 
     tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
     model_config["vocab_size"] = len(tokenizer) 
@@ -43,8 +43,8 @@ def wikipedia_main():
 def youtube_comments_main():
     config = load_config('config/base.yaml')
     set_seed(config["seed"])    
-    train_config = load_config('config/train.yaml')
-    model_config = load_config('config/model.yaml')
+    train_config = load_config('config/train_yt.yaml')
+    model_config = load_config('config/model_yt.yaml')
 
     tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
     model_config["vocab_size"] = len(tokenizer) 
