@@ -19,9 +19,9 @@ are not required. Therefore, to make things simple, this repo exists.
 ![Arch](deepseek_arch.png)
 
 
-## Training on 20220301.simple wikipedia
+## Training on Youtubr comments wikipedia
 
-![Losses](training_metrics.png)
+![Losses](training_metrics_yt.png)
 
 
 ## Datasets
