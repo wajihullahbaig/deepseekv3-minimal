@@ -116,7 +116,7 @@ def collate_fn(batch):
 
 def create_yt_and_loaders(csv_path, tokenizer, batch_size=32, min_length=5, max_length=512, stride=128, 
                          device='cpu', num_workers=4, drop_last=True, use_augmentations=False, 
-                         sample_size=5000, cache_dir='./cache'):
+                         sample_size=18000, cache_dir='./cache'):
     """
     Reads the CSV file, preprocesses the data, creates datasets, and returns data loaders with caching.
     """

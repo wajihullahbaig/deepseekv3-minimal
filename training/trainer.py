@@ -306,16 +306,16 @@ def train(model, train_loader, test_loader, val_loader, config):
             
             epoch_train_loss += total_loss.item() * gradient_accumulation_steps
             
-            # Validation during training (every N steps)
-            eval_steps = config.get('eval_steps', len(train_loader) // 5)  # Default: 5 times per epoch
-            if (batch_idx + 1) % eval_steps == 0:
-                # Run validation
+            # Validation during training (every N steps and N epochs)
+            eval_steps = config.get('eval_steps', len(train_loader) // 5) 
+            eval_epochs = config.get('eval_nth_epoch', 5)
+
+            if (batch_idx + 1) % eval_steps == 0 and (epoch +1 ) % eval_epochs == 0:
                 val_loss, val_accuracy = validate(
                     model, val_loader, criterion, 
                     config.get('pad_token_id', -100), device
                 )
                 
-                # Log validation results
                 logger.info(
                     f"Step {batch_idx+1}/{len(train_loader)}: "
                     f"Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}"

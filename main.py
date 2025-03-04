@@ -69,7 +69,7 @@ def youtube_comments_main():
     print_trainable_parameters(model, unit="M")
     model.to(config['device'])
     
-    trainer(model, train_loader,test_loader, val_loader, {**config, **train_config})
+    trainer.train(model, train_loader,test_loader, val_loader, {**config, **train_config})
 if __name__ == "__main__":
     #wikipedia_main()
     youtube_comments_main()
