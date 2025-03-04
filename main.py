@@ -71,5 +71,5 @@ def youtube_comments_main():
     
     trainer(model, train_loader,test_loader, val_loader, {**config, **train_config})
 if __name__ == "__main__":
-    wikipedia_main()
-    #youtube_comments_main()
+    #wikipedia_main()
+    youtube_comments_main()

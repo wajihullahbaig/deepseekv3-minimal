@@ -1,25 +1,22 @@
-# Training configuration for DeepSeek model
-batch_size: 8
+# Optimized training configuration
+batch_size: 16 
 learning_rate: 0.00012345
-num_epochs: 500
+num_epochs: 200 
 
 # Optimizer settings
-optimizer: sgd  # Options: sgd, adamw
-momentum: 0.9   # For SGD optimizer
-nesterov: true  # For SGD optimizer
+optimizer: adamw  # Changed from sgd to adamw
+weight_decay: 0.01
 
 # Scheduler settings
-scheduler: cosine_warmup  # Options: cosine, cosine_warmup, linear_warmup
-min_lr: 0.00001  # Minimum learning rate for cosine annealing
-restart_epochs: 10  # For cosine_warmup, T_0 parameter
-restart_mult: 2    # For cosine_warmup, T_mult parameter
-warmup_steps: 500  # For linear_warmup scheduler
+scheduler: linear_warmup  
+min_lr: 0.00001
+warmup_steps: 100  
 
 # Training settings
 gradient_clip: 1.0
-label_smoothing: 0.15
+label_smoothing: 0.1
 use_augmentations: False
-gradient_accumulation_steps: 10
-patience: 20  # Early stopping patience
-eval_steps: 6000  # Validation frequency in steps
-mtp_weight: 0.25  # Weight for MTP loss component
+gradient_accumulation_steps: 3  # Reduced from 10
+patience: 10 # Early stopping if no progress for number of epochs
+eval_steps: 1000 
+mtp_weight: 0.1  

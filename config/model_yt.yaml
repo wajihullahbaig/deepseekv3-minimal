@@ -1,15 +1,15 @@
-# Model configuration
-num_layers: 8
-hidden_dim: 256  
+# Optimized model configuration for faster training
+num_layers: 4  
+hidden_dim: 128
 num_heads: 8
-head_dim: 128
-rope_dim: 128
-kv_compression_dim: 64 
-query_compression_dim: 64 
-num_experts: 4 
+head_dim: 64  
+rope_dim: 64  
+kv_compression_dim: 32  
+query_compression_dim: 32  
+num_experts: 4  
 activated_experts: 2
 dropout_rate: 0.1
 vocab_size: 50258
 min_seq_len: 5
 max_seq_len: 128
-stride: 32  
+stride: 32

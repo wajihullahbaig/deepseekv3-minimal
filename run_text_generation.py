@@ -93,16 +93,17 @@ def run_generation_comparison(model_path,model_yaml, device='cuda', prompt=None)
 
     # Wiki
     prompts = [
-        "The future of AI is very ",
-        "Water is an essential element for ",
-        "Atom is made out of electrons, protons and "
+        "April comes between March and May, making it the  ",
+        "The Hubble Space Telescope is an outerspace ",
+        "Artificial Intelligence makes computers ",
+        "Atoms small particles, with a center made of protons and neutrons, surrounded by "
     ]    
     # Youtube 
-    prompts = [
-        "extended arm towards it and points out the 27” screen size and suddenly you realize ",
-        "replacing silicon as semiconductors nearly every industry can benefit from the improvements and cost reductions ",
-        "managed to puncture my tyre the other day sealant didn’t do the trick nor did a couple of slugs"
-    ]    
+    #prompts = [
+    #    "extended arm towards it and points out the 27” screen size and suddenly you realize ",
+    #    "replacing silicon as semiconductors nearly every industry can benefit from the improvements and cost reductions ",
+    #    "managed to puncture my tyre the other day sealant didn’t do the trick nor did a couple of slugs"
+    #]    
     
     for c,prompt in enumerate(prompts):
         logger.info(f"Running generation comparison for prompt: {prompt}")

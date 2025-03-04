@@ -22,4 +22,4 @@ use_augmentations: False
 gradient_accumulation_steps: 10
 patience: 20  # Early stopping patience
 eval_steps: 250  # Validation frequency in steps
-mtp_weight: 0.25  # Weight for MTP loss component
+mtp_weight: 0.2  # Weight for MTP loss component

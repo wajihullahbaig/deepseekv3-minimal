@@ -24,4 +24,5 @@ outputs/
 corpus/
 checkpoints*/
 .vscode/
+cache/
 logs/
