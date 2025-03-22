@@ -10,7 +10,7 @@ are not required. Therefore, to make things simple, this repo exists.
 * Transformers (obviously)
 * Key-Value-Query compression
 * Basic training loops
-* Basic text generation
+* Greedy, sampled, and MTP based text generation
 * Minimal code make everything work 
 
 ## Architecture of DeepSeek V3
