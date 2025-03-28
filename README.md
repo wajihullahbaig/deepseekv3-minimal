@@ -12,6 +12,8 @@ are not required. Therefore, to make things simple, this repo exists.
 * Basic training loops
 * Greedy, sampled, and MTP based text generation
 * Minimal code make everything work 
+* Not everything will be here according to their paper, other sources or open source implementation.
+* This is purely a personal effort 
 
 ## Architecture of DeepSeek V3
 ![Arch](deepseek_arch.png)
