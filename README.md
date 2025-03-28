@@ -15,6 +15,10 @@ are not required. Therefore, to make things simple, this repo exists.
 * Not everything will be here according to their paper, other sources or open source implementation.
 * This is purely a personal effort 
 
+## Slow training!
+The architecture is not optimized and it very slow to train. 
+Reduce the dataset or make the model less complex for faster training. :)
+
 ## Architecture of DeepSeek V3
 ![Arch](deepseek_arch.png)
 
