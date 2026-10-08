@@ -1,26 +1,39 @@
-# Training configuration for DeepSeek model
-batch_size: 16
-learning_rate: 0.0012345
-num_epochs: 200
+# Training configuration for the YouTube comments dataset
+csv_path: C:/Users/Precision/Onus/Data/YoutubeCommentsDataSet.csv
+sample_size: 18000          # comments used (tokenizer training + chunks)
+num_workers: 0              # DataLoader workers (0 is fastest on Windows for this small corpus)
+
+batch_size: 32
+learning_rate: 0.001
+num_epochs: 30
 
 # Optimizer settings
-optimizer: sgd  # Options: sgd, adamw
-momentum: 0.9   # For SGD optimizer
-nesterov: true  # For SGD optimizer
+optimizer: adamw            # Options: sgd, adamw
+weight_decay: 0.01
+momentum: 0.9               # sgd only
+nesterov: true              # sgd only
 
-# Scheduler settings
-scheduler: cosine_warmup  # Options: cosine, cosine_warmup, linear_warmup
-min_lr: 0.0001  # Minimum learning rate for cosine annealing
-restart_epochs: 10  # For cosine_warmup, T_0 parameter
-restart_mult: 2    # For cosine_warmup, T_mult parameter
-warmup_steps: 500  # For linear_warmup scheduler
+# Scheduler settings (all stepped once per optimizer step)
+scheduler: linear_warmup    # Options: cosine, cosine_warmup, linear_warmup
+warmup_steps: 300           # linear_warmup
+min_lr: 0.00005             # cosine / cosine_warmup
+restart_epochs: 10          # cosine_warmup: T_0 in epochs
+restart_mult: 2             # cosine_warmup: T_mult
 
 # Training settings
-gradient_clip: 0.5
-label_smoothing: 0.15
-use_augmentations: False
-gradient_accumulation_steps: 2
-patience: 10  # Early stopping patience
-eval_steps: 70  # Validation frequency in steps
-eval_nth_epoch: 10  # Validation frequency in epochs
-mtp_weight: 0.2  # Weight for MTP loss component
+gradient_clip: 1.0
+label_smoothing: 0.05
+use_augmentations: false
+gradient_accumulation_steps: 1
+patience: 4                 # early stopping: validations without improvement
+early_stop_min_delta: 0.005 # improvement smaller than this does not reset patience
+eval_steps: 400             # step-level validation frequency ...
+eval_nth_epoch: 10          # ... applied only every n-th epoch
+mtp_weight: 0.2             # weight of the multi-token-prediction loss
+
+# Logged at the end of training with greedy and sampled decoding
+sample_prompts:
+  - "this video is"
+  - "i think the best part"
+  - "thanks for sharing"
+  - "can someone explain why"

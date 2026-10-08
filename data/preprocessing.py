@@ -1,19 +1,20 @@
-import re
 import random
-
+import re
 
 
 def clean_wikipedia_text(text):
-    text = re.sub(r'\[.*?\]', '', text)  # Remove citations
-    text = re.sub(r'\[\[.*?\]\]', '', text)  # Remove wiki links
-    text = re.sub(r'\{\{.*?\}\}', '', text)  # Remove templates
-    text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
+    text = re.sub(r"\[\[.*?\]\]", "", text)  # wiki links first, before the single-bracket rule
+    text = re.sub(r"\{\{.*?\}\}", "", text)  # templates
+    text = re.sub(r"\[.*?\]", "", text)      # citations
+    text = re.sub(r"\s+", " ", text)         # normalise whitespace
     return text.strip()
+
 
 def random_shuffle(text):
     words = text.split()
     random.shuffle(words)
-    return " ".join(words)   
+    return " ".join(words)
+
 
 def random_deletion(text):
     words = text.split()

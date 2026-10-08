@@ -1,247 +1,118 @@
-# Fix encoding issues at the very beginning of the script
-import sys
-import os
-import io
-import time
-import yaml
-import torch
+"""Compare decoding strategies on a trained checkpoint.
+
+    python run_text_generation.py --model_path checkpoints/best_model.pt --device cuda
+    python run_text_generation.py --model_path checkpoints/best_model.pt --prompt "this video is" --prompt "I think"
+"""
 import argparse
-import logging
+import io
 import json
-from transformers import T5Tokenizer
+import logging
+import os
+import sys
+import time
+
+import torch
+import yaml
+
 from models.deepseek_v3 import DeepSeekV3
-from text_generation import TextGenerator, GenerationConfig
 from seeding import set_seed
+from text_generation import GenerationConfig, TextGenerator
+from training.checkpointing import load_tokenizer_from_checkpoint
 
-# Fix for Windows console encoding issues
-if sys.platform == 'win32':
-    # Change console encoding to UTF-8
-    os.system('chcp 65001 > NUL')
-    
-    # Use utf-8 encoding for stdout
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+if sys.platform == "win32":  # make the console UTF-8 safe
+    os.system("chcp 65001 > NUL")
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-# Configure logging with safe encoding
+os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("logs/generation_test.log", encoding='utf-8'),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("logs/generation_test.log", encoding="utf-8"), logging.StreamHandler()],
 )
 logger = logging.getLogger("TEST RUNNER")
 
-def load_config(config_path):
-    """Load configuration from YAML file."""
-    with open(config_path, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f)
+PROMPTS = {
+    "yt": ["this video is", "i think the best part", "thanks for sharing", "can someone explain why"],
+    "wiki": ["April comes between March and May, making it the", "The Hubble Space Telescope is an",
+             "Artificial intelligence makes computers", "Atoms are small particles made of"],
+}
 
-def load_model_with_correct_vocab(model_path,model_yaml, device='cuda'):
-    """Load the model with the correct vocabulary size from the checkpoint."""
-    # Load the checkpoint to get embedding size
-    checkpoint = torch.load(model_path, map_location='cpu')
-    
-    # Check if the checkpoint has model_state_dict key
-    if 'model_state_dict' in checkpoint:
-        state_dict = checkpoint['model_state_dict']
+
+def load_model(model_path, model_yaml=None, device="cuda"):
+    """Model + tokenizer from a checkpoint; the model config is taken from the checkpoint when present."""
+    checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    if "model_config" in checkpoint:
+        model_config = dict(checkpoint["model_config"])
     else:
-        state_dict = checkpoint
-    
-    # Get vocab size from embedding weight
-    vocab_size = state_dict['embedding.weight'].shape[0]
-    logger.info(f"Checkpoint vocabulary size: {vocab_size}")
-    
-    model_config = load_config(model_yaml)
-    
-    # Set vocab size to match checkpoint
-    model_config['vocab_size'] = vocab_size
-    logger.info(f"Setting model vocab_size to {vocab_size}")
-    
+        with open(model_yaml, "r", encoding="utf-8") as f:
+            model_config = yaml.safe_load(f)
+    model_config["vocab_size"] = state_dict["embedding.weight"].shape[0]
     model = DeepSeekV3(model_config)
-    
-    if 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
-    else:
-        model.load_state_dict(checkpoint)
-    
-    model = model.to(device)
-    model.eval()  # Set model to evaluation mode
-    
-    # Initialize tokenizer - make sure it matches the vocab size if possible
-    tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
-    
+    model.load_state_dict(state_dict)
+    model.to(device).eval()
+    tokenizer = load_tokenizer_from_checkpoint(checkpoint, model_path)
+    logger.info(f"Loaded {model_path} (vocab {model_config['vocab_size']}, tokenizer {type(tokenizer).__name__})")
     return model, tokenizer
 
-def run_generation_comparison(model_path,model_yaml, device='cuda', prompt=None):
-    """
-    Run a side-by-side comparison of all generation methods on a single prompt.
-    
-    Args:
-        model_path: Path to the model checkpoint
-        device: Device to run generation on
-        prompt: Custom prompt to use (if None, a default will be used)
-    """
-    # Load model and tokenizer
-    model, tokenizer = load_model_with_correct_vocab(model_path,model_yaml, device)
-    generator = TextGenerator(model, tokenizer, device)
-    
-    # # Use provided prompt or default
-    # if prompt is None:
-    #   prompt = "Place your prompt here either for wikipedia or youtube style comments"
 
-    # Wiki
-    prompts = [
-        "April comes between March and May, making it the  ",
-        "The Hubble Space Telescope is an outerspace ",
-        "Artificial Intelligence makes computers ",
-        "Atoms small particles, with a center made of protons and neutrons, surrounded by "
-    ]    
-    # Youtube 
-    #prompts = [
-    #    "extended arm towards it and points out the 27” screen size and suddenly you realize ",
-    #    "replacing silicon as semiconductors nearly every industry can benefit from the improvements and cost reductions ",
-    #    "managed to puncture my tyre the other day sealant didn’t do the trick nor did a couple of slugs"
-    #]    
-    
-    for c,prompt in enumerate(prompts):
-        logger.info(f"Running generation comparison for prompt: {prompt}")
-        
-        # Define configurations for different generation methods
-        configs = {
-            "Greedy": GenerationConfig(
-                max_length=50,
-                do_sample=False,
-                eos_token_id=tokenizer.eos_token_id,
-                pad_token_id=tokenizer.pad_token_id
-            ),
-            "Sampling (temp=0.7)": GenerationConfig(
-                max_length=50,
-                temperature=0.7,
-                top_k=50,
-                top_p=0.95,
-                repetition_penalty=1.2,
-                eos_token_id=tokenizer.eos_token_id,
-                pad_token_id=tokenizer.pad_token_id
-            ),
-            "Sampling (temp=1.2)": GenerationConfig(
-                max_length=50,
-                temperature=1.2,
-                top_k=50,
-                top_p=0.95,
-                repetition_penalty=1.2,
-                eos_token_id=tokenizer.eos_token_id,
-                pad_token_id=tokenizer.pad_token_id
-            ),
-            "Beam Search (beams=4)": GenerationConfig(
-                max_length=50,
-                do_sample=False,
-                num_beams=4,
-                length_penalty=1.0,
-                early_stopping=True,
-                eos_token_id=tokenizer.eos_token_id,
-                pad_token_id=tokenizer.pad_token_id
-            ),
-            "MTP Speculation": GenerationConfig(
-                max_length=50,
-                temperature=1.2,
-                top_k=50,
-                top_p=0.95,
-                repetition_penalty=1.2,
-                use_mtp=True,
-                mtp_speculation_mode=True,
-                eos_token_id=tokenizer.eos_token_id,
-                pad_token_id=tokenizer.pad_token_id
-            )
-        }
-        
-        # Generate using each method and print side by side
-        results = {}
-        generation_times = {}
-        
-        for name, config in configs.items():
-            logger.info(f"Generating with {name}...")
-            try:
-                start_time = time.time()
-                result = generator.generate(prompt, config)
-                end_time = time.time()
-                generation_time = end_time - start_time
-                
-                results[name] = result
-                generation_times[name] = generation_time
-                logger.info(f"{name} completed in {generation_time:.2f} seconds")
-            except Exception as e:
-                logger.error(f"{name} generation failed: {str(e)}")
-                results[name] = f"Error: {str(e)}"
-                generation_times[name] = None
-        
-        # Print detailed comparison
-        logger.info("\n" + "="*80)
+def decoding_configs(tokenizer, max_length):
+    ids = dict(eos_token_id=tokenizer.eos_token_id, pad_token_id=tokenizer.pad_token_id)
+    return {
+        "Greedy": GenerationConfig(max_length=max_length, do_sample=False, use_mtp=False, **ids),
+        "Sampling (temp=0.7)": GenerationConfig(max_length=max_length, temperature=0.7, top_k=50, top_p=0.95,
+                                                repetition_penalty=1.2, use_mtp=False, **ids),
+        "Sampling (temp=1.2)": GenerationConfig(max_length=max_length, temperature=1.2, top_k=50, top_p=0.95,
+                                                repetition_penalty=1.2, use_mtp=False, **ids),
+        "Beam Search (beams=4)": GenerationConfig(max_length=max_length, do_sample=False, num_beams=4,
+                                                  length_penalty=1.0, early_stopping=True, **ids),
+        "MTP Speculation (greedy)": GenerationConfig(max_length=max_length, do_sample=False, use_mtp=True,
+                                                     mtp_speculation_mode=True, **ids),
+        "MTP Speculation (temp=0.7)": GenerationConfig(max_length=max_length, temperature=0.7, top_k=50, top_p=0.95,
+                                                       repetition_penalty=1.2, use_mtp=True, mtp_speculation_mode=True, **ids),
+    }
+
+
+def run_generation_comparison(model_path, model_yaml=None, device="cuda", prompts=None, max_length=50):
+    model, tokenizer = load_model(model_path, model_yaml, device)
+    generator = TextGenerator(model, tokenizer, device)
+    prompts = prompts or PROMPTS["yt"]
+    for c, prompt in enumerate(prompts):
+        logger.info("=" * 80)
         logger.info(f"PROMPT: {prompt}")
-        logger.info("="*80)
-        
-        for name, result in results.items():
-            if generation_times[name] is not None:
-                time_str = f"{generation_times[name]:.2f}s"
-            else:
-                time_str = "N/A"
-            logger.info(f"\n{name} (Time: {time_str}):")
-            logger.info("-"*80)
-            logger.info(result)
-            logger.info("-"*80)
-        
-        # Create directory for logs if it doesn't exist
-        os.makedirs('logs', exist_ok=True)
-        
-        # Save results to file in proper JSON format
-        comparison_data = {
-            "prompt": prompt,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "model_path": model_path,
-            "device": device,
-            "results": {}
-        }
-        
-        # Add each method's results and timing
-        for name, result in results.items():
-            comparison_data["results"][name] = {
-                "text": result,
-                "generation_time_seconds": generation_times[name] if generation_times[name] is not None else None,
-                "config": {k: str(v) for k, v in configs[name].__dict__.items() if not k.startswith('_')}
-            }
-        
-        # Write to JSON file with proper encoding
-        with open(f'logs/prompt_{c}_comparison.json', 'w', encoding='utf-8') as f:
-            json.dump(comparison_data, f, indent=2, ensure_ascii=False)
-        
-        logger.info(f"Comparison results saved to logs/comparison.json")
-    
+        results = {}
+        for name, config in decoding_configs(tokenizer, max_length).items():
+            t0 = time.time()
+            try:
+                text, error = generator.generate(prompt, config), None
+            except Exception as exc:  # keep comparing the other methods
+                text, error = None, str(exc)
+                logger.exception(f"{name} failed")
+            seconds = time.time() - t0
+            results[name] = {"text": text, "error": error, "generation_time_seconds": round(seconds, 3),
+                             "config": {k: v for k, v in config.__dict__.items()}}
+            logger.info(f"{name} ({seconds:.2f}s): {text if error is None else 'ERROR ' + error}")
+        with open(f"logs/prompt_{c}_comparison.json", "w", encoding="utf-8") as f:
+            json.dump({"prompt": prompt, "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"), "model_path": model_path,
+                       "device": device, "results": results}, f, indent=2, ensure_ascii=False)
+        logger.info(f"Comparison saved to logs/prompt_{c}_comparison.json")
+
 
 def main():
-    """Main function to parse arguments and run the comparison."""
-    parser = argparse.ArgumentParser(description='Compare different text generation methods')
-    parser.add_argument('--model_path', type=str, required=True, 
-                        help='Path to the model checkpoint')
-    parser.add_argument('--model_yaml', type=str, required=True, 
-                        help='Path to the model yaml')
-    parser.add_argument('--device', type=str, default='cuda',
-                        help='Device to run inference on (cuda or cpu)')
-    parser.add_argument('--seed', type=int, default=42, 
-                        help='Random seed for reproducibility')
-    parser.add_argument('--prompt', type=str, default=None,
-                        help='Custom prompt for generation')
-    
+    parser = argparse.ArgumentParser(description="Compare text generation methods on a checkpoint")
+    parser.add_argument("--model_path", required=True, help="checkpoint .pt (e.g. checkpoints/best_model.pt)")
+    parser.add_argument("--model_yaml", default=None, help="only needed for checkpoints without an embedded model config")
+    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--prompt", action="append", help="custom prompt (repeatable); default: YouTube prompts")
+    parser.add_argument("--prompts", choices=sorted(PROMPTS), default="yt", help="built-in prompt set")
+    parser.add_argument("--max_length", type=int, default=50)
     args = parser.parse_args()
-    
     set_seed(args.seed)
-    
-    try:
-        run_generation_comparison(args.model_path, args.model_yaml, args.device, args.prompt)
-    except Exception as e:
-        logger.error(f"An error occurred during text generation: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
+    run_generation_comparison(args.model_path, args.model_yaml, args.device,
+                              prompts=args.prompt or PROMPTS[args.prompts], max_length=args.max_length)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

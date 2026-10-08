@@ -1,22 +1,33 @@
-# Optimized training configuration
-batch_size: 16 
-learning_rate: 0.00012345
-num_epochs: 200 
+# Training configuration for Simple-English Wikipedia (legacy-datasets/wikipedia 20220301.simple)
+sample_size: 1000           # articles used (tokenizer training + chunks)
+num_workers: 0
+
+batch_size: 16
+learning_rate: 0.0003
+num_epochs: 30
 
 # Optimizer settings
-optimizer: adamw  # Changed from sgd to adamw
+optimizer: adamw
 weight_decay: 0.01
 
-# Scheduler settings
-scheduler: linear_warmup  
+# Scheduler settings (all stepped once per optimizer step)
+scheduler: linear_warmup
+warmup_steps: 300
 min_lr: 0.00001
-warmup_steps: 100  
 
 # Training settings
 gradient_clip: 1.0
-label_smoothing: 0.1
-use_augmentations: False
-gradient_accumulation_steps: 3  # Reduced from 10
-patience: 10 # Early stopping if no progress for number of epochs
-eval_steps: 1000 
-mtp_weight: 0.1  
+label_smoothing: 0.05
+use_augmentations: false
+gradient_accumulation_steps: 2
+patience: 4
+early_stop_min_delta: 0.005
+eval_steps: 1000
+eval_nth_epoch: 10
+mtp_weight: 0.1
+
+sample_prompts:
+  - "April comes between March and May, making it the"
+  - "The Hubble Space Telescope is an"
+  - "Artificial intelligence makes computers"
+  - "Atoms are small particles made of"

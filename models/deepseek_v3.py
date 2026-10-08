@@ -4,12 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple, List
 
-import math
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import Optional, Tuple, List
-
 class RotaryPositionalEmbedding(nn.Module):
     """Applies Rotary Positional Embeddings (RoPE) to enhance positional awareness."""
     def __init__(self, dim: int):
@@ -155,69 +149,58 @@ class ExpertFFN(nn.Module):
         return self.down(self.dropout(self.gelu(self.up(x))))
 
 class DeepSeekMoE(nn.Module):
-    """Mixture of Experts (MoE) with auxiliary-loss-free load balancing."""
-    def __init__(self, hidden_dim: int, num_experts: int, top_k: int, dropout_rate: float = 0.1):
+    """Mixture of Experts with DeepSeek-V3 auxiliary-loss-free load balancing.
+
+    Routing follows the paper: sigmoid affinity scores, the top-k is picked on
+    ``score + bias`` but the gate *weights* use the unbiased scores, and the bias is a
+    non-trainable buffer nudged after every training step: down for experts that got
+    more than the average load, up for the others.  Nothing is mutated in eval mode.
+    """
+    def __init__(self, hidden_dim: int, num_experts: int, top_k: int, dropout_rate: float = 0.1,
+                 bias_update_speed: float = 0.001, shared_expert_scale: float = 0.1):
         super().__init__()
         self.num_experts = num_experts
         self.top_k = top_k
-        
-        # Add dropout
+        self.bias_update_speed = bias_update_speed
+        self.shared_expert_scale = shared_expert_scale
         self.dropout = nn.Dropout(dropout_rate)
 
         self.shared_expert = ExpertFFN(hidden_dim, dropout_rate=dropout_rate)
         self.experts = nn.ModuleList([ExpertFFN(hidden_dim, dropout_rate=dropout_rate) for _ in range(num_experts)])
         self.gate = nn.Linear(hidden_dim, num_experts, bias=False)
-        self.bias = nn.Parameter(torch.zeros(num_experts))  # For load balancing
-        self.bias_update_speed = 0.001
-        self.register_buffer("expert_load", torch.zeros(num_experts))
+        self.register_buffer("bias", torch.zeros(num_experts))         # routing bias (selection only)
+        self.register_buffer("expert_load", torch.zeros(num_experts))  # EMA of tokens per expert, for logging
 
-        # Initialize gate with smaller variance
         nn.init.normal_(self.gate.weight, mean=0.0, std=0.02 / math.sqrt(hidden_dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len, hidden_dim = x.shape
-        x_flat = x.view(-1, hidden_dim)  # [batch_size * seq_len, hidden_dim]
+        x_flat = x.reshape(-1, hidden_dim)                                 # [tokens, hidden]
 
-        # Compute gating scores with bias for routing
-        scores = F.sigmoid(self.gate(x_flat) + self.bias)  # [bs * seq_len, num_experts]
-        top_scores, top_indices = scores.topk(self.top_k, dim=-1)  # [bs * seq_len, top_k]
-        
-        # Normalize top scores for weighting
+        scores = torch.sigmoid(self.gate(x_flat))                         # [tokens, experts]
+        _, top_indices = (scores + self.bias).topk(self.top_k, dim=-1)    # bias only influences selection
+        top_scores = scores.gather(1, top_indices)
         top_scores = top_scores / (top_scores.sum(dim=-1, keepdim=True) + 1e-6)
-        
-        # Update load balancing bias (keep your original implementation)
-        mask = F.one_hot(top_indices, self.num_experts).sum(dim=1).float()  # [bs * seq_len, num_experts]
-        expert_load = mask.sum(dim=0)  # [num_experts]
-        self.bias.data += self.bias_update_speed * (expert_load - self.expert_load)
-        self.expert_load.lerp_(expert_load, 0.1)  # Exponential moving average
 
-        # Apply experts with proper weighting
+        if self.training:
+            with torch.no_grad():
+                load = F.one_hot(top_indices, self.num_experts).sum(dim=1).float().sum(dim=0)
+                self.bias -= self.bias_update_speed * torch.sign(load - load.mean())
+                self.expert_load.lerp_(load, 0.1)
+
+        # Dispatch: each expert runs once on all (token, slot) pairs routed to it
         combined = torch.zeros_like(x_flat)
-        for i in range(self.top_k):
-            expert_indices = top_indices[:, i]  # [batch_size * seq_len]
-            coefficient = top_scores[:, i].unsqueeze(-1)  # [batch_size * seq_len, 1]
-            
-            # Process inputs for each expert
-            for expert_idx, expert in enumerate(self.experts):
-                # Find inputs that should go to this expert
-                mask = (expert_indices == expert_idx)
-                if mask.any():
-                    # Get inputs for this expert
-                    expert_inputs = x_flat[mask]
-                    # Process inputs and apply coefficient
-                    expert_outputs = expert(expert_inputs) * coefficient[mask]
-                    # Add outputs to the combined tensor
-                    combined.index_add_(0, torch.where(mask)[0], expert_outputs)
+        flat_idx = top_indices.reshape(-1)                                # [tokens * top_k]
+        flat_w = top_scores.reshape(-1, 1)
+        token_of = torch.arange(x_flat.size(0), device=x.device).repeat_interleave(self.top_k)
+        for expert_idx, expert in enumerate(self.experts):
+            sel = (flat_idx == expert_idx).nonzero(as_tuple=True)[0]
+            if sel.numel():
+                rows = token_of[sel]
+                combined.index_add_(0, rows, expert(x_flat[rows]) * flat_w[sel])
 
-        # Add shared expert output
-        shared_out = self.shared_expert(x_flat) * 0.1  # Scale shared output
-        combined = combined + shared_out
-        
-        # Apply additional dropout to final output
-        combined = self.dropout(combined)
-        
-        # Reshape back to original dimensions
-        return combined.view(batch_size, seq_len, hidden_dim)
+        combined = combined + self.shared_expert(x_flat) * self.shared_expert_scale
+        return self.dropout(combined).view(batch_size, seq_len, hidden_dim)
 
 class MultiTokenPrediction(nn.Module):
     def __init__(self, hidden_dim: int, vocab_size: int, depth: int = 1, dropout_rate: float = 0.1):

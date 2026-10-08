@@ -1,3 +1,9 @@
 # Base configuration
 seed: 42
 device: cuda
+cache_dir: ./cache
+
+# Tokenizer: "sentencepiece" trains a small model on the training corpus (cached in cache_dir),
+# "mt5" uses google/mt5-base (250k pieces: the vocab layers then hold ~96% of the parameters).
+tokenizer: sentencepiece
+tokenizer_vocab_size: 8000

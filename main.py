@@ -1,75 +1,63 @@
+"""Train the minimal DeepSeek-V3 on YouTube comments (default) or Simple-English Wikipedia.
+
+    python main.py            # YouTube comments, settings in config/train_yt.yaml + model_yt.yaml
+    python main.py wiki       # Wikipedia,       settings in config/train_wiki.yaml + model_wiki.yaml
+"""
+import sys
+
 import yaml
-from data.wikipedia_dataloaders import create_wikipedia_loaders
-from data.youtube_dataloaders import create_yt_and_loaders
+
+from data.tokenizer import get_tokenizer
+from data.wikipedia_dataloaders import create_wikipedia_loaders, load_wiki_texts
+from data.youtube_dataloaders import create_yt_and_loaders, load_yt_texts
 from models.deepseek_v3 import DeepSeekV3
 from seeding import set_seed
 from trainable_params import print_trainable_parameters
-from transformers import T5Tokenizer
-
 from training import trainer
 
+
 def load_config(config_file):
-    with open(config_file, 'r') as f:
-        config = yaml.safe_load(f)
-    return config
+    with open(config_file, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
-def wikipedia_main():
-    config = load_config('config/base.yaml')
-    set_seed(config["seed"])    
-    train_config = load_config('config/train_wiki.yaml')
-    model_config = load_config('config/model_wiki.yaml')
 
-    tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
-    model_config["vocab_size"] = len(tokenizer) 
-    model = DeepSeekV3(model_config)    
+def run(dataset):
+    config = load_config("config/base.yaml")
+    train_config = load_config(f"config/train_{dataset}.yaml")
+    model_config = load_config(f"config/model_{dataset}.yaml")
+    set_seed(config["seed"])
+    cache_dir = config.get("cache_dir", "./cache")
+
     print("Preparing data, please wait...")
-    train_loader, val_loader, test_loader = create_wikipedia_loaders(
-        tokenizer,
-        batch_size=train_config['batch_size'],
-        min_length = model_config["min_seq_len"],
-        max_length=model_config['max_seq_len'],
-        stride=model_config['stride'],
-        use_augmentations = train_config["use_augmentations"],
-        device='cpu'
-        )
-    config["pad_token_id"] = tokenizer.pad_token_id
-    print(f"Number of batches in train_loader: {len(train_loader)}")
-    print(f"Number of batches in val_loader: {len(val_loader)}")
-    print(f"Number of batches in test_loader: {len(test_loader)}")
-    print_trainable_parameters(model, unit="M")
-    model.to(config['device'])
-    
-    trainer.train(model, train_loader, test_loader,val_loader, {**config, **train_config})
+    if dataset == "yt":
+        texts = load_yt_texts(train_config["csv_path"], train_config["sample_size"])
+        tokenizer = get_tokenizer(config, texts, cache_dir=cache_dir, name="yt")
+        loaders = create_yt_and_loaders(
+            train_config["csv_path"], tokenizer, batch_size=train_config["batch_size"],
+            min_length=model_config["min_seq_len"], max_length=model_config["max_seq_len"],
+            stride=model_config["stride"], use_augmentations=train_config["use_augmentations"],
+            sample_size=train_config["sample_size"], device=config["device"],
+            num_workers=train_config.get("num_workers", 0), cache_dir=cache_dir, seed=config["seed"])
+    else:
+        texts = load_wiki_texts(train_config["sample_size"])
+        tokenizer = get_tokenizer(config, texts, cache_dir=cache_dir, name="wiki")
+        loaders = create_wikipedia_loaders(
+            tokenizer, batch_size=train_config["batch_size"], min_length=model_config["min_seq_len"],
+            max_length=model_config["max_seq_len"], stride=model_config["stride"],
+            use_augmentations=train_config["use_augmentations"], sample_size=train_config["sample_size"],
+            device=config["device"], num_workers=train_config.get("num_workers", 0), cache_dir=cache_dir,
+            seed=config["seed"])
+    train_loader, val_loader, test_loader = loaders
 
-def youtube_comments_main():
-    config = load_config('config/base.yaml')
-    set_seed(config["seed"])    
-    train_config = load_config('config/train_yt.yaml')
-    model_config = load_config('config/model_yt.yaml')
-
-    tokenizer = T5Tokenizer.from_pretrained('google/mt5-base')
-    model_config["vocab_size"] = len(tokenizer) 
-    model = DeepSeekV3(model_config)    
-    print("Preparing data, please wait...")
-    csv_path = "C:/Users/Precision/Onus/Data/YoutubeCommentsDataSet.csv"
-    train_loader, val_loader, test_loader = create_yt_and_loaders(
-        csv_path,
-        tokenizer,
-        batch_size=train_config['batch_size'],
-        min_length = model_config["min_seq_len"],
-        max_length=model_config['max_seq_len'],
-        stride=model_config['stride'],
-        use_augmentations = train_config["use_augmentations"],
-        device='cpu'
-        )
+    model_config["vocab_size"] = len(tokenizer)
     config["pad_token_id"] = tokenizer.pad_token_id
-    print(f"Number of batches in train_loader: {len(train_loader)}")
-    print(f"Number of batches in val_loader: {len(val_loader)}")
-    print(f"Number of batches in test_loader: {len(test_loader)}")
+    model = DeepSeekV3(model_config)
+    print(f"Tokenizer: {type(tokenizer).__name__} with {len(tokenizer)} pieces")
+    print(f"Batches - train: {len(train_loader)}, val: {len(val_loader)}, test: {len(test_loader)}")
     print_trainable_parameters(model, unit="M")
-    model.to(config['device'])
-    
-    trainer.train(model, train_loader,test_loader, val_loader, {**config, **train_config})
+
+    trainer.train(model, train_loader, test_loader, val_loader, {**config, **train_config}, tokenizer=tokenizer)
+
+
 if __name__ == "__main__":
-    #wikipedia_main()
-    youtube_comments_main()
+    run(sys.argv[1] if len(sys.argv) > 1 else "yt")

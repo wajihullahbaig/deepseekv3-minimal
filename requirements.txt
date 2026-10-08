@@ -1,8 +1,16 @@
-datasets==3.2.0
-matplotlib==3.10.0
-numpy==2.2.2
-PyYAML==6.0.2
-PyYAML==6.0.2
+# Verified on Windows 11 with Python 3.10 (conda env "gpt2"), CUDA 11.8, Quadro RTX 5000.
+# For a GPU build of torch install it first from the PyTorch index, then the rest:
+#   pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu118
+#   pip install -r requirements.txt
 torch==2.5.1
-tqdm==4.67.1
 transformers==4.47.1
+sentencepiece==0.2.0   # T5Tokenizer (google/mt5-base) is a SentencePiece tokenizer
+datasets==3.2.0        # keep <4.0: the "wikipedia" loader is a script-based dataset
+pandas==2.2.3          # data/youtube_dataloaders.py
+numpy==1.26.4
+PyYAML==6.0.2
+tqdm==4.67.1
+matplotlib==3.10.0
+
+# tests (python -m pytest tests)
+pytest==9.1.1

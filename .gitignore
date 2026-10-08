@@ -26,3 +26,6 @@ checkpoints*/
 .vscode/
 cache/
 logs/
+
+# Benchmark outputs (checkpoints, logs, plots)
+benchmarks/out/
